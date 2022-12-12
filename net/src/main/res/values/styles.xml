@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="cla_net_custom_bottom_sheet_dialog_theme" parent="Theme.Design.Light.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/cla_net_custom_bottom_sheet_style</item>
+    </style>
+
+    <style name="cla_net_custom_bottom_sheet_style" parent="Widget.Design.BottomSheet.Modal">
+        <item name="android:background">#00000000</item>
+    </style>
+
+    <style name="MyContentProgressBar" parent="Widget.AppCompat.ProgressBar">
+        <item name="android:colorAccent">#1D6FE9</item>
+    </style>
+
+</resources>
