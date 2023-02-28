@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">NetDemo</string>
+    <string name="the_server_is_down_please_click_retry">服务器开小差了，请重试</string>
+    <string name="load_failure_simple">网络异常，请检查网络设置</string>
+</resources>
