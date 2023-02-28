@@ -6,6 +6,7 @@ import cn.cla.library.net.utils.token
 import okhttp3.Interceptor
 import okhttp3.Response
 
+/** 网络接口 */
 interface INetProvider {
 
     /**
