@@ -6,7 +6,9 @@ import android.view.ViewGroup
 import cn.cla.library.net.NetIntContentProvider
 import com.google.gson.Gson
 import com.hjq.gson.factory.GsonFactory
+import kotlinx.coroutines.Job
 import java.lang.reflect.InvocationTargetException
+import java.util.concurrent.ConcurrentHashMap
 
 
 internal const val TAG = "cla_net"
@@ -83,6 +85,22 @@ private fun getActivityThreadInActivityThreadStaticMethod(): Any? {
         Log.e(TAG, "getActivityThreadInActivityThreadStaticMethod: " + e.message)
         null
     }
+}
+
+internal fun String?.cancelJob(map: ConcurrentHashMap<String, Job?>?) {
+    if (this.isNullOrBlank()) {
+        return
+    }
+
+    map?.get(this)?.cancel()
+}
+
+internal fun String?.saveJob(map: ConcurrentHashMap<String, Job?>?, job: Job?) {
+    if (this.isNullOrBlank()) {
+        return
+    }
+
+    map?.set(this, job)
 }
 
 

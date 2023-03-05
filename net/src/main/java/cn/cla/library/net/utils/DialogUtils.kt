@@ -53,3 +53,17 @@ internal inline fun <reified T : DialogFragment> Context?.showDialogSimple(creat
 }
 
 internal inline fun <reified T : DialogFragment> Fragment.showDialogSimple(createDialog: () -> T) = requireContext().showDialogSimple(createDialog)
+
+internal inline fun <reified T : DialogFragment> FragmentActivity?.isDialogShowing(): Boolean {
+
+    if (this == null) {
+        return false
+    }
+
+    val tag = T::class.java.simpleName
+    val dialog = supportFragmentManager.findFragmentByTag(tag) as? T? ?: return false
+
+    return dialog.isAdded && dialog.isVisible
+}
+
+internal inline fun <reified T : DialogFragment> Context?.isDialogShowing() = (this as? FragmentActivity?).isDialogShowing<T>()

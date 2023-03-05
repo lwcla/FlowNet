@@ -7,7 +7,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
-import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.widget.ContentLoadingProgressBar
 import androidx.fragment.app.DialogFragment
@@ -19,25 +18,32 @@ import cn.cla.library.net.utils.setBarColor
  */
 internal class ProcessDialog() : DialogFragment() {
 
-    constructor(isCancelAble: Boolean, text: String = "正在加载") : this() {
-        cancelAble = isCancelAble
-        tip = text
+    companion object {
+        private const val KEY_CANCEL_ABLE = "cancel_able_key"
+        private const val KEY_TEXT = "text_key"
+        fun newInstance(isCancelAble: Boolean, text: String = "正在加载") = ProcessDialog().also {
+            it.arguments = Bundle().apply {
+                putBoolean(KEY_CANCEL_ABLE, isCancelAble)
+                putString(KEY_TEXT, text)
+            }
+        }
     }
 
-    /**
-     * 是否可以点旁边取消
-     */
+    private val isCancelAble by lazy(LazyThreadSafetyMode.NONE) { arguments?.getBoolean(KEY_CANCEL_ABLE) ?: true }
+    private val showText by lazy(LazyThreadSafetyMode.NONE) { arguments?.getString(KEY_TEXT) ?: "正在加载" }
+
+    private val ctx get() = requireContext()
+    private val aty get() = requireActivity()
+    private val owner get() = viewLifecycleOwner
+
+    private var tip: String = showText
+
+    /** 是否可以点旁边取消 */
     var cancelAble = true
         set(value) {
             isCancelable = value
             field = value
         }
-
-    private var tip: String = "正在加载"
-
-    private val ctx get() = requireContext()
-    private val aty get() = requireActivity()
-    private val owner get() = viewLifecycleOwner
 
     //背景透明
     override fun getTheme(): Int = R.style.cla_net_custom_bottom_sheet_style
@@ -45,6 +51,8 @@ internal class ProcessDialog() : DialogFragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         dialog?.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dialog?.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        cancelAble = isCancelAble
 
         return inflater.inflate(R.layout.cla_net_dialog_process, container, false)
     }

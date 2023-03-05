@@ -326,17 +326,15 @@ class RequestBuilder<Service, ResponseType, ReturnType>(
                 override fun onDestroy(owner: LifecycleOwner) = hideLoading(lifeScope)
             })
 
-            loadingDialog = activity.showDialogSimple { ProcessDialog(loadingCancelAble, loadingText) }
+            loadingDialog = activity.showDialogSimple { ProcessDialog.newInstance(loadingCancelAble, loadingText) }
         }
     }
 
     var dismissLoading: (LifecycleCoroutineScope) -> Unit = { lifeScope ->
         lifeScope.launch {
-            try {
+            kotlin.runCatching {
                 loadingDialog?.dismissAllowingStateLoss()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            }.let { loadingDialog = null }
         }
     }
 
