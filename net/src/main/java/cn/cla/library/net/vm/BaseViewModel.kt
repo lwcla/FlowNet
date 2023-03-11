@@ -38,7 +38,7 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
     ): LaunchObserverInf<T> {
         val result = LaunchObserverImpl<T>(viewModelScope, map, key)
         result.request = { owner, minActiveState ->
-            request(this@launch, owner, minActiveState, result)
+            request(this@launch, true, owner, minActiveState, result)
         }
         return result
     }
@@ -70,9 +70,9 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 创建热流，统一用这个方法创建，方便以后修改 */
-    inline fun <reified T> createLiveFlow() = MutableSharedFlow<Triple<String?, Boolean, T>>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    inline fun <reified T> createLiveFlow() = MutableSharedFlow<StateParams<T>>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
-    fun <Q, T> MutableSharedFlow<Triple<String?, Boolean, Q>>.switchMap(flow: suspend (Q) -> Flow<Resource<T>>): StateObserveInf<T> {
+    fun <Q, T> MutableSharedFlow<StateParams<Q>>.switchMap(flow: suspend (Q) -> Flow<Resource<T>>): StateObserveInf<T> {
         val result = StateObserveImpl<T>(viewModelScope)
         var repeatJob: Job? = null
         result.request = { owner, minActiveState ->
@@ -80,9 +80,10 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
             this.onCompletion {
                 Log.i(TAG, "switchMap liveFlow onCompletion")
             }.collect {
-                val methodName = it.first
-                val forceQuest = it.second
-                val questParams = it.third
+                val key = it.key
+                val forceQuest = it.forceRequest
+                val questParams = it.value
+                val isRefresh = it.isRefresh
 
                 if (!forceQuest && result.value != null) {
                     //之前请求的结果还在时，如果不是强制去请求，那么就直接返回之前的数据
@@ -93,29 +94,40 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
                 //flowWithLifecycle 会阻塞当前协程，如果shareFlow发送了另外一个值过来
                 //collect虽然会收集到这个值，但是因为flowWithLifecycle阻塞了这个协程，所以最终并不会执行flow流
                 //所以把这一块放在另外一个协程中，同时为了防止这里为了防止同时存在多个flowWithLifecycle方法在运行，在启动之前，先取消
-                if (!methodName.isNullOrBlank()) {
+                if (key == null) {
                     repeatJob?.cancel()
                 }
                 repeatJob = viewModelScope.launch {
-                    request(flow(questParams), owner, minActiveState, result)
+                    request(flow(questParams), isRefresh, owner, minActiveState, result)
                 }
             }
         }
         return result
     }
 
-    /** value 不能设置成空字符串 */
-    fun <Q> MutableSharedFlow<Triple<String?, Boolean, Q>>.setValue(
+    /**
+     * 去请求数据
+     * value 不能设置成空字符串
+     *
+     * @param value 请求参数
+     * @param isRefresh 是否刷新数据，如果是刷新数据，则会把保存的之前请求的数据清空
+     * @param forceRequest 是否即使有之前保存的数据，也强制去请求
+     * @param key 如果不需要取消上次的请求，那么key设置为null
+     */
+    fun <Q> MutableSharedFlow<StateParams<Q>>.setValue(
         value: Q,
+        isRefresh: Boolean = true,
         forceRequest: Boolean = true,
-        methodName: String = getMethodName()
+        key: String? = getMethodName()
     ) {
-        println("BaseViewModel.setValue lwl methodName=${methodName}")
-        viewModelScope.launch { emit(Triple(methodName, forceRequest, value)) }
+        viewModelScope.launch {
+            emit(StateParams(value = value, isRefresh = isRefresh, forceRequest = forceRequest, key = key))
+        }
     }
 
     private suspend fun <T> request(
         flow: Flow<Resource<T>>,
+        isRefresh: Boolean,
         owner: LifecycleOwner?,
         minActiveState: Lifecycle.State?,
         result: ObserverResultInf<T>
@@ -139,7 +151,7 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
             //流出现异常，上报错误数据
             emit(Resource.failure(httpCode = -1, code = -1))
         }.cancellable().flowOn(Dispatchers.Default).collectLatest { //有新值发出时，如果此时上个收集尚未完成，则会取消掉上个值的收集操作
-            result.setResult(it)
+            result.setResult(it, isRefresh)
         }
     }
 
@@ -150,7 +162,15 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
 
         return traces.firstOrNull()?.methodName ?: ""
     }
+
+    data class StateParams<T>(
+        val value: T,
+        val isRefresh: Boolean = true,
+        val forceRequest: Boolean = true,
+        val key: String?
+    )
 }
+
 
 
 

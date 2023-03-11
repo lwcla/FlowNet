@@ -63,7 +63,7 @@ data class Resource<T>(
             message = message
         )
 
-        fun <T> success(data: T?, code: Int) =
+        fun <T> success(data: T?, code: Int = 200) =
             Resource(ResourceState.Success, data = data, code = code)
     }
 }

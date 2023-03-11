@@ -47,7 +47,7 @@ internal class LaunchObserverImpl<T>(
     private val key: String?,
 ) : LaunchObserverInf<T>, ObserverResultInf<T> {
 
-    private val ref = WeakReference(scope)
+    private val scopeRef = WeakReference(scope)
     private val mapRef = WeakReference(map)
 
     private val map get() = mapRef.get()
@@ -56,7 +56,7 @@ internal class LaunchObserverImpl<T>(
     private var result: ResourceCall<T>? = null
     internal var request: (suspend (owner: LifecycleOwner?, state: Lifecycle.State?) -> Unit)? = null
 
-    override fun setResult(res: Resource<T>) {
+    override fun setResult(res: Resource<T>, isRefresh: Boolean) {
         resource = res
         result?.invoke(res)
     }
@@ -75,7 +75,7 @@ internal class LaunchObserverImpl<T>(
         result = r
         key.cancelJob(map)
         //这里用的协程作用域是viewModel级别的
-        val job = ref.get()?.launch { request?.invoke(owner, minActiveState) }
+        val job = scopeRef.get()?.launch { request?.invoke(owner, minActiveState) }
         key.saveJob(map, job)
     }
 
@@ -87,7 +87,7 @@ internal class LaunchObserverImpl<T>(
         result = r
         key.cancelJob(map)
         //这里用的协程作用域是viewModel级别的
-        val job = ref.get()?.launch { request?.invoke(null, null) }
+        val job = scopeRef.get()?.launch { request?.invoke(null, null) }
         key.saveJob(map, job)
     }
 

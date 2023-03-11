@@ -5,10 +5,13 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import cn.cla.library.net.entity.Resource
+import cn.cla.library.net.entity.convert
+import cn.cla.library.net.entity.success
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
@@ -37,22 +40,23 @@ class StateObserveImpl<T>(scope: CoroutineScope) : StateObserveInf<T>, ObserverR
     }
 
     private val scopeRef = WeakReference(scope)
-    private val stateFlow by lazy { MutableStateFlow<Resource<T>?>(null) }
+    private val stateFlow by lazy { MutableSharedFlow<Resource<T>>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST) }
     private var requestJob: Job? = null
+
+    @Volatile
+    private var resource: Resource<T>? = null
 
     internal var request: (suspend (owner: LifecycleOwner?, state: Lifecycle.State?) -> Unit)? = null
 
-    private val doRequest = lazy {
-        scopeRef.get()?.launch(Dispatchers.Default) {
-            request?.invoke(null, null)
-        }
-    }
+    override val value get() = resource.let { if (it?.success == true) it else null }
 
-    override val value get() = stateFlow.value.let { if (it?.success == true) it else null }
-
-    override fun setResult(res: Resource<T>) {
+    override fun setResult(res: Resource<T>, isRefresh: Boolean) {
         scopeRef.get()?.launch {
-            stateFlow.tryEmit(res)
+            if (isRefresh) {
+                resource = null
+            }
+
+            stateFlow.emit(res)
         }
     }
 
@@ -67,7 +71,10 @@ class StateObserveImpl<T>(scope: CoroutineScope) : StateObserveInf<T>, ObserverR
         })
 
         job = scopeRef.get()?.launch {
-//            doRequest.value
+
+            resource?.let {
+                launch { call.invoke(it) }
+            }
 
             requestJob?.cancel()
             requestJob = scopeRef.get()?.launch(Dispatchers.Default) {
@@ -79,12 +86,29 @@ class StateObserveImpl<T>(scope: CoroutineScope) : StateObserveInf<T>, ObserverR
             }.catch {
                 it.printStackTrace()
             }.collect {
-                if (it == null) {
-                    return@collect
+
+                it.success {
+                    val pageInf = this as? PageCacheInf<T>
+                    if (pageInf == null) {
+                        resource = it
+                    } else {
+                        val cacheData = resource?.data?.let { data -> pageInf.pageCache(data) } ?: it.data
+                        cacheData?.let { cache ->
+                            resource = it.convert(cache)
+                        }
+                    }
                 }
+
+                println("StateObserveImpl.observe lwl resource=${resource?.data}")
 
                 call.invoke(it)
             }
         }
     }
+
 }
+
+interface PageCacheInf<T> {
+    fun pageCache(cache: T): T
+}
+

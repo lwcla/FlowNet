@@ -1,8 +1,10 @@
 package cn.cla.net.demo.vm
 
 import cn.cla.library.net.RequestBuilder
+import cn.cla.library.net.entity.Resource
 import cn.cla.net.demo.entity.HomeBannerEntity
 import cn.cla.net.demo.net.requestBaseByFlow
+import kotlinx.coroutines.flow.flow
 
 class MainRepository {
     /**
@@ -15,5 +17,15 @@ class MainRepository {
         autoShowLoading = true
         loadingText = "正在加载首页banner数据"
         loadingDismissDelay = 1000
+    }
+
+    fun loadList(pageIndex: Int) = flow {
+
+        val list = mutableListOf<String>()
+        repeat(10) {
+            list.add("$pageIndex-$it")
+        }
+
+        emit(Resource.success(PageEntityCache(pageIndex = pageIndex, pageSize = 10, list = list)))
     }
 }
