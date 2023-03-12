@@ -2,10 +2,12 @@ package cn.cla.net.demo
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.widget.Button
 import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import cn.cla.library.net.entity.success
+import cn.cla.net.demo.config.jumpAty
 import cn.cla.net.demo.utils.findView
 import cn.cla.net.demo.vm.MainVm
 import com.google.gson.Gson
@@ -18,6 +20,8 @@ class MainActivity : AppCompatActivity() {
     private val tvRequest by findView<TextView>(R.id.tvRequest)
     private val tvRefresh by findView<TextView>(R.id.tvRefresh)
     private val tvJson by findView<TextView>(R.id.tvJson)
+    private val btnToSecond by findView<Button>(R.id.btnToSecond)
+    private val btnToThird by findView<Button>(R.id.btnToThird)
 
     private val gson by lazy { Gson() }
 
@@ -41,6 +45,14 @@ class MainActivity : AppCompatActivity() {
             tvJson.text = ""
             index = 0
             mainVm.loadList(index, refresh = true, force = true)
+        }
+
+        btnToSecond.setOnClickListener {
+            SecondAty.launch(this)
+        }
+
+        btnToThird.setOnClickListener {
+            jumpAty<ThirdAty>()
         }
 
         mainVm.loadList.observe(owner) {

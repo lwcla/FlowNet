@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "NetDemo"
 include ':app'
 include ':net'
+include ':adapter'

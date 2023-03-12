@@ -4,7 +4,9 @@ import cn.cla.library.net.RequestBuilder
 import cn.cla.library.net.entity.Resource
 import cn.cla.net.demo.entity.HomeBannerEntity
 import cn.cla.net.demo.net.requestBaseByFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 
 class MainRepository {
     /**
@@ -27,5 +29,7 @@ class MainRepository {
         }
 
         emit(Resource.success(PageEntityCache(pageIndex = pageIndex, pageSize = 10, list = list)))
+    }.onEach {
+        delay(500)
     }
 }

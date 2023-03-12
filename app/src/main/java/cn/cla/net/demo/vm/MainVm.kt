@@ -18,6 +18,14 @@ class MainVm(app: Application) : BaseViewModel(app) {
         repo.loadList(it)
     }
 
+    private val _loadSecondFragment1 = createLiveFlow<Int>()
+    val loadSecondFragment1 = _loadSecondFragment1.switchMap {
+        repo.loadList(it)
+    }
+
+    var pageIndex: Int = 0
+    var fragmentPageIndex: Int = 0
+
     /** 首页banner */
     fun loadHomeBanner(force: Boolean) {
         _homeDataFlow.setValue("这是设置的值", forceRequest = force)
@@ -25,6 +33,10 @@ class MainVm(app: Application) : BaseViewModel(app) {
 
     fun loadList(pageIndex: Int, refresh: Boolean, force: Boolean) {
         _loadList.setValue(value = pageIndex, isRefresh = refresh, forceRequest = force)
+    }
+
+    fun loadSecondFragment1(pageIndex: Int, refresh: Boolean, force: Boolean) {
+        _loadSecondFragment1.setValue(value = pageIndex, isRefresh = refresh, forceRequest = force)
     }
 }
 
