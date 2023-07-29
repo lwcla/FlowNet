@@ -77,7 +77,7 @@ class StateObserveImpl<T>(scope: CoroutineScope) : StateObserveInf<T>, ObserverR
             }
 
             requestJob?.cancel()
-            requestJob = scopeRef.get()?.launch(Dispatchers.Default) {
+            requestJob = launch(Dispatchers.Default) {
                 request?.invoke(owner, minActiveState)
             }
 
@@ -99,13 +99,10 @@ class StateObserveImpl<T>(scope: CoroutineScope) : StateObserveInf<T>, ObserverR
                     }
                 }
 
-                println("StateObserveImpl.observe lwl resource=${resource?.data}")
-
                 call.invoke(it)
             }
         }
     }
-
 }
 
 interface PageCacheInf<T> {
