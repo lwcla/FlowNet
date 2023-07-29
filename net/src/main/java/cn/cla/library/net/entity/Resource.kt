@@ -148,7 +148,7 @@ inline fun <T> requestFromCacheBeforeNet(
             createFlow(RequestBuilder.NetWay.ONLY_CACHE).collect { emit(it) }
         }
     }.onEach {
-        it.success { cacheReadSuccess.set(true) }
+        it.success { cacheReadSuccess.compareAndSet(false, true) }
     }.filter {
         //本地缓存读取成功以及网络请求不成功的情况下，才返回本地缓存数据
         //一旦网络请求成功，那么本地缓存的数据就不用返回了
@@ -157,7 +157,7 @@ inline fun <T> requestFromCacheBeforeNet(
     }
 
     val netFlow = createFlow(RequestBuilder.NetWay.ONLY_NET_BUT_SAVE_CACHE).onEach {
-        it.successOrNull { netReadSuccess.set(true) }
+        it.successOrNull { netReadSuccess.compareAndSet(false, true) }
     }.filter {
         //网络数据请求成功或者本地缓存请求失败的情况下，才返回网络数据
         //如果网络数据请求失败了，这个时候本地缓存请求成功了，那么就只需要返回缓存数据就可以了

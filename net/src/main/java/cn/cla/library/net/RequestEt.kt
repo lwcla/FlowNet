@@ -129,7 +129,7 @@ object RequestEt {
                 val service = createService(RetrofitType.ONLY_CACHE, baseUrl)
                 call(service)
             }.onEach {
-                params.cacheFlowHasSuccess.set(it.suc())
+                params.cacheFlowHasSuccess.compareAndSet(false, it.suc())
                 params.isReadFromCacheBeforeNet = true
             }.filter {
                 it.suc()
@@ -167,7 +167,7 @@ object RequestEt {
                 // 只有网络请求成功的话，才去拦截缓存数据，否则的话
                 // 就有可能出现，缓存数据读取成功，网络数据请求失败了，结果只返回了网络数据的情况
                 // 这样的缓存就没有起到作用
-                params.netFlowHasSuccess.set(it.suc())
+                params.netFlowHasSuccess.compareAndSet(false, it.suc())
                 params.isReadFromCacheBeforeNet = false
             }.map {
                 mapResult(it, params)
