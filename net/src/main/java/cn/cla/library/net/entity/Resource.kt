@@ -3,6 +3,7 @@ package cn.cla.library.net.entity
 import cn.cla.library.net.RequestBuilder
 import cn.cla.library.net.utils.ifNullOrBlank
 import kotlinx.coroutines.flow.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 enum class ResourceState {
     Loading, Failure, Success
@@ -136,11 +137,10 @@ inline fun <T> requestFromCacheBeforeNet(
     crossinline createFlow: (RequestBuilder.NetWay) -> Flow<Resource<T>>
 ): Flow<Resource<T>> {
 
-    val map = mutableMapOf<String, Boolean>()
     //网络请求成功
-    val netReadSuccess = "netReadSuccess"
+    val netReadSuccess = AtomicBoolean(false)
     //本地缓存读取成功
-    val cacheReadSuccess = "cacheReadSuccess"
+    val cacheReadSuccess = AtomicBoolean(false)
 
     val cacheFlow = flow {
         //在不需要缓存的情况下，不去读取缓存数据
@@ -148,22 +148,22 @@ inline fun <T> requestFromCacheBeforeNet(
             createFlow(RequestBuilder.NetWay.ONLY_CACHE).collect { emit(it) }
         }
     }.onEach {
-        it.success { map[cacheReadSuccess] = true }
+        it.success { cacheReadSuccess.set(true) }
     }.filter {
         //本地缓存读取成功以及网络请求不成功的情况下，才返回本地缓存数据
         //一旦网络请求成功，那么本地缓存的数据就不用返回了
         //缓存数据读取失败的话，也不用返回
-        it.success && map[netReadSuccess] != true
+        it.success && !netReadSuccess.get()
     }
 
     val netFlow = createFlow(RequestBuilder.NetWay.ONLY_NET_BUT_SAVE_CACHE).onEach {
-        it.successOrNull { map[netReadSuccess] = true }
+        it.successOrNull { netReadSuccess.set(true) }
     }.filter {
         //网络数据请求成功或者本地缓存请求失败的情况下，才返回网络数据
         //如果网络数据请求失败了，这个时候本地缓存请求成功了，那么就只需要返回缓存数据就可以了
         //否则本地缓存读取成功了，但是网络数据读取失败，结果失败的网络数据冲掉了成功的本地缓存数据
         //导致最后ui显示的时请求失败的状态
-        it.success || map[cacheReadSuccess] != true
+        it.success || !cacheReadSuccess.get()
     }
 
     //merge 会让两个flow同时启动，但是网络返回的数据才是最新的
