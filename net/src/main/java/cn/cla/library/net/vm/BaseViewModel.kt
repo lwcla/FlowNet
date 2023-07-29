@@ -94,7 +94,8 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
                 //flowWithLifecycle 会阻塞当前协程，如果shareFlow发送了另外一个值过来
                 //collect虽然会收集到这个值，但是因为flowWithLifecycle阻塞了这个协程，所以最终并不会执行flow流
                 //所以把这一块放在另外一个协程中，同时为了防止这里为了防止同时存在多个flowWithLifecycle方法在运行，在启动之前，先取消
-                if (key == null) {
+                println("BaseViewModel.switchMap lwl key=$key questParams=$questParams")
+                if (!key.isNullOrBlank()) {
                     repeatJob?.cancel()
                 }
                 repeatJob = viewModelScope.launch {

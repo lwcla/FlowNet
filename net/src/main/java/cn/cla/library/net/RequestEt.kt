@@ -2,9 +2,6 @@ package cn.cla.library.net
 
 import android.app.Activity
 import androidx.fragment.app.DialogFragment
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleCoroutineScope
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.asLiveData
 import cn.cla.library.net.RequestBuilder.NetWay
 import cn.cla.library.net.RequestEt.request
@@ -14,17 +11,33 @@ import cn.cla.library.net.entity.Resource
 import cn.cla.library.net.entity.suc
 import cn.cla.library.net.entity.toResource
 import cn.cla.library.net.interceptor.TokenFailureException
-import cn.cla.library.net.utils.*
+import cn.cla.library.net.utils.gsonFactory
+import cn.cla.library.net.utils.logE
+import cn.cla.library.net.utils.showDialogSimple
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.cancellable
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onEmpty
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import retrofit2.Call
 import retrofit2.Invocation
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 网络的基础扩展方法
@@ -42,7 +55,7 @@ object RequestEt {
      */
     inline fun <reified Service, reified ReturnType> request(
         noinline call: suspend (Service.() -> CallResult<ReturnType>),
-        noinline builder: RequestBuilder<Service, ReturnType, ReturnType>.() -> Unit = {}
+        noinline builder: RequestBuilder<Service, ReturnType, ReturnType>.() -> Unit = {},
     ) = request(
         createService = { type, baseUrl -> RetrofitFactory.createService(type, baseUrl) },
         call = call,
@@ -51,10 +64,10 @@ object RequestEt {
                 params.processBean,
                 params.processBeanAnyWay,
                 params.isReadFromCacheBeforeNet,
-                params.field
+                params.field,
             )
         },
-        builder = builder
+        builder = builder,
     )
 
     /**
@@ -72,9 +85,8 @@ object RequestEt {
         createService: (RetrofitType, String) -> Service,
         call: suspend (Service.() -> CallResult<ResponseType>),
         mapResult: suspend CallResult<ResponseType>.(RequestBuilder<Service, ResponseType, ReturnType>) -> Resource<ReturnType>,
-        builder: (RequestBuilder<Service, ResponseType, ReturnType>.() -> Unit)? = null
+        builder: (RequestBuilder<Service, ResponseType, ReturnType>.() -> Unit)? = null,
     ) = requestByFlow(createService, call, mapResult, launchLoading = true, builder).asLiveData()
-
 
     /**
      * flow的方式请求数据
@@ -93,9 +105,8 @@ object RequestEt {
         call: suspend (Service.() -> CallResult<ResponseType>),
         mapResult: suspend CallResult<ResponseType>.(RequestBuilder<Service, ResponseType, ReturnType>) -> Resource<ReturnType>,
         launchLoading: Boolean = false,
-        builder: (RequestBuilder<Service, ResponseType, ReturnType>.() -> Unit)? = null
+        builder: (RequestBuilder<Service, ResponseType, ReturnType>.() -> Unit)? = null,
     ): Flow<Resource<ReturnType>> {
-
         val params = RequestBuilder<Service, ResponseType, ReturnType>()
         builder?.invoke(params)
 
@@ -118,7 +129,7 @@ object RequestEt {
                 val service = createService(RetrofitType.ONLY_CACHE, baseUrl)
                 call(service)
             }.onEach {
-                params.cacheFlowHasSuccess = it.suc()
+                params.cacheFlowHasSuccess.set(it.suc())
                 params.isReadFromCacheBeforeNet = true
             }.filter {
                 it.suc()
@@ -127,8 +138,8 @@ object RequestEt {
             }.onEach {
                 it.isReadFromCacheBeforeNet = true
             }.filter {
-                //只有网络请求还没结束的时候，缓存数据才会发出去
-                !params.netFlowHasSuccess
+                // 只有网络请求还没结束的时候，缓存数据才会发出去
+                !params.netFlowHasSuccess.get()
             }.flowOn(Dispatchers.IO).cancellable().catch {
                 logE("requestByFlow cache error=$it")
             }
@@ -136,17 +147,16 @@ object RequestEt {
         val netFlow = flowOf(params)
             .filter { params.netEnable }
             .map {
-
                 val type = if (params.cacheIfNetError) {
-                    //这个会去读取网络数据，如果失败，则读取缓存数据
-                    //网络返回的数据也会缓存一份在本地
+                    // 这个会去读取网络数据，如果失败，则读取缓存数据
+                    // 网络返回的数据也会缓存一份在本地
                     RetrofitType.CACHE
                 } else {
                     if (params.onlyNet) {
-                        //这个只会从网络读取数据
+                        // 这个只会从网络读取数据
                         RetrofitType.ONLY_NET
                     } else {
-                        //这个只会从网络读取数据，但是会把网络返回的数据缓存一份在本地
+                        // 这个只会从网络读取数据，但是会把网络返回的数据缓存一份在本地
                         RetrofitType.ONLY_NET_BUT_SAVE_CACHE
                     }
                 }
@@ -154,33 +164,33 @@ object RequestEt {
                 val service = createService(type, baseUrl)
                 call(service)
             }.onEach {
-                //只有网络请求成功的话，才去拦截缓存数据，否则的话
-                //就有可能出现，缓存数据读取成功，网络数据请求失败了，结果只返回了网络数据的情况
-                //这样的缓存就没有起到作用
-                params.netFlowHasSuccess = it.suc()
+                // 只有网络请求成功的话，才去拦截缓存数据，否则的话
+                // 就有可能出现，缓存数据读取成功，网络数据请求失败了，结果只返回了网络数据的情况
+                // 这样的缓存就没有起到作用
+                params.netFlowHasSuccess.set(it.suc())
                 params.isReadFromCacheBeforeNet = false
             }.map {
                 mapResult(it, params)
             }.onEach {
                 it.isReadFromCacheBeforeNet = false
             }.filter {
-                //如果网络数据请求失败了，这个时候本地缓存请求成功了，那么就只需要返回缓存数据就可以了
-                it.success || !params.cacheFlowHasSuccess
+                // 如果网络数据请求失败了，这个时候本地缓存请求成功了，那么就只需要返回缓存数据就可以了
+                it.success || !params.cacheFlowHasSuccess.get()
             }.flowOn(Dispatchers.IO).cancellable().catch {
                 logE("requestByFlow net error=$it")
             }
 
-        //发送加载中的状态
+        // 发送加载中的状态
         val loadingFlow = flow { emit(Resource.loading<ReturnType>()) }.filter { launchLoading }
 
-        //如果网络数据很快就回来了，那么就不用返回缓存的数据
-        //避免频繁的刷新Ui
+        // 如果网络数据很快就回来了，那么就不用返回缓存的数据
+        // 避免频繁的刷新Ui
         val dataFlow = listOf(cacheFlow, netFlow).filter { !params.useMock }.merge().debounce(500)
 
         return listOf(loadingFlow, mockFlow, dataFlow).merge().onStart {
             params.showLoading()
             if (params.autoShowLoading && params.loadingDismissDelay > 0) {
-                //避免弹窗一闪而过
+                // 避免弹窗一闪而过
                 delay(params.loadingDismissDelay)
             }
         }.onCompletion {
@@ -208,13 +218,12 @@ object RequestEt {
      */
     suspend fun <ResponseType, ReturnType> Call<ResponseType>.callAwait(
         type: Class<ResponseType>,
-        mapData: ResponseType.() -> ReturnType
+        mapData: ResponseType.() -> ReturnType,
     ): CallResult<ReturnType> = withContext(Dispatchers.IO) {
-
         try {
             val response = execute()
             if (response.code() == 204) {
-                //处理delete请求时body为空的情况
+                // 处理delete请求时body为空的情况
                 return@withContext CallResult(true, response.code(), null)
             }
 
@@ -226,7 +235,7 @@ object RequestEt {
                 return@withContext CallResult(false, response.code(), httpMsg = "身份验证不通过")
             }
 
-            //eg: 用错误的手机号注册时，返回的body为空，response.code==500，但是errorBody中包含后台返回的错误信息
+            // eg: 用错误的手机号注册时，返回的body为空，response.code==500，但是errorBody中包含后台返回的错误信息
             var body = kotlin.runCatching {
                 if (response.isSuccessful) response.body() else null
             }.getOrNull()
@@ -293,82 +302,79 @@ class RequestBuilder<Service, ResponseType, ReturnType>(
 ) {
 
     /** 网络请求是否已经完成 */
-    internal var netFlowHasSuccess = false
+    internal var netFlowHasSuccess = AtomicBoolean(false)
 
     /** 本地缓存是否读取成功 */
-    internal var cacheFlowHasSuccess = false
+    internal var cacheFlowHasSuccess = AtomicBoolean(false)
 
-    //数据请求方式
+    // 数据请求方式
     var netWay: NetWay = NetWay.ONLY_NET
 
-    //是否可以读取缓存数据
+    // 是否可以读取缓存数据
     internal val cacheEnable get() = netWay == NetWay.ONLY_CACHE || netWay == NetWay.CACHE_BEFORE_NET
 
-    //是否可以读取网络数据
+    // 是否可以读取网络数据
     internal val netEnable get() = netWay != NetWay.ONLY_CACHE
 
-    //是否只读取网络数据
+    // 是否只读取网络数据
     internal val onlyNet get() = netWay == NetWay.ONLY_NET
 
-    //优先读取网络数据，如果网络数据获取成功，那么就返回网络数据，如果网络数据读取失败，那么就返回缓存数据
+    // 优先读取网络数据，如果网络数据获取成功，那么就返回网络数据，如果网络数据读取失败，那么就返回缓存数据
     internal val cacheIfNetError get() = netWay == NetWay.CACHE_IF_NET_FAILED
 
     private var loadingDialog: DialogFragment? = null
 
     private val topAty: Activity?
         get() = topActivity
-    private val scope: LifecycleCoroutineScope?
-        get() = topAty?.lifeCycleScope
 
-    var loading: (Activity, LifecycleCoroutineScope) -> Unit = { activity, lifeScope ->
-        lifeScope.launch {
-            activity.lifeCycle?.addObserver(object : DefaultLifecycleObserver {
-                override fun onDestroy(owner: LifecycleOwner) = hideLoading(lifeScope)
-            })
-
-            loadingDialog = activity.showDialogSimple { ProcessDialog.newInstance(loadingCancelAble, loadingText) }
-        }
+    var loading: (Activity) -> Unit = { activity ->
+        loadingDialog = activity.showDialogSimple { ProcessDialog.newInstance(loadingCancelAble, loadingText) }
     }
 
-    var dismissLoading: (LifecycleCoroutineScope) -> Unit = { lifeScope ->
-        lifeScope.launch {
-            kotlin.runCatching {
-                loadingDialog?.dismissAllowingStateLoss()
-            }.let { loadingDialog = null }
-        }
+    var dismissLoading: () -> Unit = {
+        runCatching { loadingDialog?.dismissAllowingStateLoss() }
+        loadingDialog = null
     }
 
-    fun showLoading() {
+    suspend fun showLoading() = withContext(Dispatchers.Main) {
         if (!autoShowLoading) {
-            return
+            return@withContext
         }
 
-        val activity = topAty ?: return
-        val lifeScope = scope ?: return
+        if (!isActive) {
+            return@withContext
+        }
 
-        loading(activity, lifeScope)
+        val activity = topAty ?: return@withContext
+        if (!activity.isFinishing) {
+            return@withContext
+        }
+//        activity.lifeCycle?.addObserver(object : DefaultLifecycleObserver {
+//            override fun onDestroy(owner: LifecycleOwner) {
+//                loadingDialog?.lifecycleScope?.launch { hideLoading() }
+//            }
+//        })
+        loading(activity)
     }
 
-    fun hideLoading(
-        lifeScope: LifecycleCoroutineScope? = scope
-    ) {
+    suspend fun hideLoading() = withContext(Dispatchers.Main) {
         if (!autoShowLoading) {
-            return
+            return@withContext
         }
 
-        if (lifeScope == null) {
-            return
+        if (!isActive) {
+            return@withContext
         }
 
-        dismissLoading(lifeScope)
+        dismissLoading()
     }
 
     /** 数据请求方式 */
     enum class NetWay {
-        ONLY_NET,//只读网络数据，也不会保存网络数据到本地
-        ONLY_NET_BUT_SAVE_CACHE,//只读取网络数据，但是网络数据返回之后，会保存在本地
-        ONLY_CACHE, //只读取缓存
-        CACHE_IF_NET_FAILED,//优先读取网络数据，如果网络数据获取成功，那么就返回网络数据，如果网络数据读取失败，那么就返回缓存数据
-        CACHE_BEFORE_NET,//先返回本地缓存，拿到网络数据之后，再返回网络数据，如果网络数据返回的比较快，那么就只返回网络数据
+        ONLY_NET, // 只读网络数据，也不会保存网络数据到本地
+        ONLY_NET_BUT_SAVE_CACHE, // 只读取网络数据，但是网络数据返回之后，会保存在本地
+        ONLY_CACHE, // 只读取缓存
+        CACHE_IF_NET_FAILED, // 优先读取网络数据，如果网络数据获取成功，那么就返回网络数据，如果网络数据读取失败，那么就返回缓存数据
+        CACHE_BEFORE_NET, // 先返回本地缓存，拿到网络数据之后，再返回网络数据，如果网络数据返回的比较快，那么就只返回网络数据
     }
 }
