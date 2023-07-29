@@ -337,31 +337,33 @@ class RequestBuilder<Service, ResponseType, ReturnType>(
     }
 
     suspend fun showLoading() = withContext(Dispatchers.Main) {
+        println("RequestBuilder.showLoading lwl autoShowLoading=$autoShowLoading")
         if (!autoShowLoading) {
             return@withContext
         }
 
+        println("RequestBuilder.showLoading lwl isActive=$isActive")
         if (!isActive) {
             return@withContext
         }
 
         val activity = topAty ?: return@withContext
-        if (!activity.isFinishing) {
+
+        println("RequestBuilder.showLoading lwl isFinishing=${activity.isFinishing}")
+        if (activity.isFinishing) {
             return@withContext
         }
-//        activity.lifeCycle?.addObserver(object : DefaultLifecycleObserver {
-//            override fun onDestroy(owner: LifecycleOwner) {
-//                loadingDialog?.lifecycleScope?.launch { hideLoading() }
-//            }
-//        })
+
         loading(activity)
     }
 
     suspend fun hideLoading() = withContext(Dispatchers.Main) {
+        println("RequestBuilder.hideLoading lwl autoShowLoading=$autoShowLoading")
         if (!autoShowLoading) {
             return@withContext
         }
 
+        println("RequestBuilder.hideLoading lwl isActive=$isActive")
         if (!isActive) {
             return@withContext
         }

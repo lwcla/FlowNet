@@ -3,6 +3,7 @@ package cn.cla.net.demo
 import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -21,15 +22,12 @@ class ThirdAty : AppCompatActivity() {
             it.setOnLoadMoreListener {
                 mainVm.loadList(mainVm.pageIndex++, refresh = false, force = true)
             }
-
-
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_third)
-
 
         mainVm.loadList.observe(this) {
             it.success {
@@ -42,12 +40,23 @@ class ThirdAty : AppCompatActivity() {
             }
         }
 
+        mainVm.homeDataState.observe(this, minActiveState = Lifecycle.State.RESUMED) {
+            println("ThirdAty.onCreate lwl res=$it")
+        }
 
         rvData.layoutManager = LinearLayoutManager(this)
         rvData.addItemDecoration(DividerItemDecoration(this, RecyclerView.VERTICAL))
-        println("ThirdAty.onCreate lwl 设置adapter mainVm=${mainVm}")
+        println("ThirdAty.onCreate lwl 设置adapter mainVm=$mainVm")
         rvData.adapter = adapter
 
         mainVm.loadList(mainVm.pageIndex++, refresh = false, force = false)
+
+        // 测试autoShowLoading
+//        mainVm.loadHomeBanner(force = true)
+//        lifecycleScope.launch {
+//            delay(2000)
+// //            finish()
+//            jumpAty<SecondAty>()
+//        }
     }
 }

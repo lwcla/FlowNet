@@ -19,6 +19,8 @@ class MainRepository {
         autoShowLoading = true
         loadingText = "正在加载首页banner数据"
         loadingDismissDelay = 1000
+    }.onEach {
+        delay(5000)
     }
 
     fun loadList(pageIndex: Int) = flow {
