@@ -2,6 +2,7 @@ package cn.cla.library.net.entity
 
 import cn.cla.library.net.RequestBuilder
 import cn.cla.library.net.utils.ifNullOrBlank
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -154,7 +155,7 @@ inline fun <T> requestFromCacheBeforeNet(
         //一旦网络请求成功，那么本地缓存的数据就不用返回了
         //缓存数据读取失败的话，也不用返回
         it.success && !netReadSuccess.get()
-    }
+    }.flowOn(Dispatchers.IO).cancellable()
 
     val netFlow = createFlow(RequestBuilder.NetWay.ONLY_NET_BUT_SAVE_CACHE).onEach {
         it.successOrNull { netReadSuccess.compareAndSet(false, true) }
@@ -164,7 +165,7 @@ inline fun <T> requestFromCacheBeforeNet(
         //否则本地缓存读取成功了，但是网络数据读取失败，结果失败的网络数据冲掉了成功的本地缓存数据
         //导致最后ui显示的时请求失败的状态
         it.success || !cacheReadSuccess.get()
-    }
+    }.flowOn(Dispatchers.IO).cancellable()
 
     //merge 会让两个flow同时启动，但是网络返回的数据才是最新的
     //一旦网络请求成功，那么本地缓存的数据就不用返回了
