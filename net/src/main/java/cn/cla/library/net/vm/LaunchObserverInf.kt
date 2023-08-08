@@ -56,7 +56,7 @@ internal class LaunchObserverImpl<T>(
     private var result: ResourceCall<T>? = null
     internal var request: (suspend (owner: LifecycleOwner?, state: Lifecycle.State?) -> Unit)? = null
 
-    override fun setResult(res: Resource<T>, isRefresh: Boolean) {
+    override suspend fun setResult(res: Resource<T>, isRefresh: Boolean) {
         resource = res
         result?.invoke(res)
     }

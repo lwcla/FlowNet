@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import cn.cla.library.net.entity.success
+import cn.cla.library.net.vm.observe
 import cn.cla.net.demo.config.dp
 import cn.cla.net.demo.utils.bindTabLayout
 import cn.cla.net.demo.utils.findView
@@ -104,7 +105,7 @@ class SecondFragment : Fragment() {
         val rvData = view.findViewById<RecyclerView>(R.id.rvData)
 
 
-        loadList.observe(owner) {
+        loadList.observe {
             it.success {
                 println("SecondFragment.onViewCreated lwl name=${name} observe adapter.dataSize=${adapter.dataSize} list=${this.list.size} ")
                 if (adapter.dataSize == 0) {

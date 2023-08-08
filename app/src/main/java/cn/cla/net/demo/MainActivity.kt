@@ -6,7 +6,8 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import cn.cla.library.net.entity.success
+import androidx.lifecycle.Lifecycle
+import cn.cla.library.net.vm.observe
 import cn.cla.net.demo.config.jumpAty
 import cn.cla.net.demo.utils.findView
 import cn.cla.net.demo.vm.MainVm
@@ -35,16 +36,22 @@ class MainActivity : AppCompatActivity() {
 
         var index = 0
 
+        mainVm.loadList.observe(Lifecycle.State.RESUMED) {
+            println("MainActivity.onCreate lwl loadList observe1 value=$it")
+        }
+
         tvRequest.setOnClickListener {
+            println("MainActivity.onCreate lwl click request")
             tvJson.text = ""
 //            mainVm.loadHomeBanner(force = true)
             mainVm.loadList(++index, refresh = false, force = true)
         }
 
         tvRefresh.setOnClickListener {
-            tvJson.text = ""
-            index = 0
-            mainVm.loadList(index, refresh = true, force = true)
+//            tvJson.text = ""
+//            index = 0
+//            mainVm.loadList(index, refresh = true, force = true)
+            recreate()
         }
 
         btnToSecond.setOnClickListener {
@@ -55,14 +62,22 @@ class MainActivity : AppCompatActivity() {
             jumpAty<ThirdAty>()
         }
 
-        mainVm.loadList.observe(owner) {
-            println("MainActivity.onCreate lwl loadList res=$it")
-            it.success {
-                tvJson.text = "${tvJson.text.toString()}\n${list.toString()}"
-            }
-        }
 
-        mainVm.loadList(0, refresh = false, force = false)
+
+//        mainVm.loadList.observe(owner) {
+//            println("MainActivity.onCreate lwl loadList res=$it")
+//            it.success {
+//                tvJson.text = "${tvJson.text.toString()}\n${list.toString()}"
+//            }
+//        }
+
+
+//        mainVm.loadList.observe()
+
+
+//        mainVm.loadList.observe()
+
+//        mainVm.loadList(0, refresh = false, force = false)
 
 //        mainVm.homeDataState.observe(owner) {
 //            println("lwl MainActivity.onCreate homeDataState11 res=$it")

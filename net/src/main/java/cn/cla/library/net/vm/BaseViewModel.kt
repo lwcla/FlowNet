@@ -38,7 +38,7 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
     ): LaunchObserverInf<T> {
         val result = LaunchObserverImpl<T>(viewModelScope, map, key)
         result.request = { owner, minActiveState ->
-            request(this@launch, true, owner, minActiveState, result)
+            request(this@launch, true, result)
         }
         return result
     }
@@ -72,13 +72,14 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
     /** 创建热流，统一用这个方法创建，方便以后修改 */
     inline fun <reified T> createLiveFlow() = MutableSharedFlow<StateParams<T>>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
-    fun <Q, T> MutableSharedFlow<StateParams<Q>>.switchMap(flow: suspend (Q) -> Flow<Resource<T>>): StateObserveInf<T> {
-        val result = StateObserveImpl<T>(viewModelScope)
-        var repeatJob: Job? = null
-        result.request = { owner, minActiveState ->
+    fun <Q, T> MutableSharedFlow<StateParams<Q>>.switchFlow(flow: suspend (Q) -> Flow<Resource<T>>): StateObserveInf<T> {
+        val result = StateObserveImpl<T>()
 
-            this.onCompletion {
-                Log.i(TAG, "switchMap liveFlow onCompletion")
+        viewModelScope.launch(Dispatchers.Default) {
+            var repeatJob: Job? = null
+
+            onCompletion {
+                Log.i(TAG, "switchFlow liveFlow onCompletion")
             }.collect {
                 val key = it.key
                 val forceQuest = it.forceRequest
@@ -97,11 +98,12 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
                 if (!key.isNullOrBlank()) {
                     repeatJob?.cancel()
                 }
-                repeatJob = viewModelScope.launch {
-                    request(flow(questParams), isRefresh, owner, minActiveState, result)
+                repeatJob = viewModelScope.launch(Dispatchers.Default) {
+                    request(flow(questParams), isRefresh, result)
                 }
             }
         }
+
         return result
     }
 
@@ -128,29 +130,18 @@ open class BaseViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun <T> request(
         flow: Flow<Resource<T>>,
         isRefresh: Boolean,
-        owner: LifecycleOwner?,
-        minActiveState: Lifecycle.State?,
         result: ObserverResultInf<T>
     ) {
-
         flow.onStart {
             //onStart需要设置在flowWithLifecycle前面，否则因为生命周期自动触发时，不会回调onStart方法
             emit(Resource.loading<T>())
-        }.let {
-            if (owner != null && minActiveState != null) {
-                //收集上游流的Lifecycle.State 。 如果生命周期低于该状态，则收集将停止，如果再次处于该状态，则将重新启动。
-                //意思是，设置了这个参数之后，每次activity/fragment走到这个状态的时候，就会自动重新发送请求
-                it.flowWithLifecycle(owner.lifecycle, minActiveState)
-            } else {
-                it
-            }
         }.onEmpty {
             emit(Resource.failure(httpCode = -1, code = -1))
         }.catch {
             it.printStackTrace()
             //流出现异常，上报错误数据
             emit(Resource.failure(httpCode = -1, code = -1))
-        }.cancellable().flowOn(Dispatchers.Default).collectLatest { //有新值发出时，如果此时上个收集尚未完成，则会取消掉上个值的收集操作
+        }.cancellable().collect { //有新值发出时，如果此时上个收集尚未完成，则会取消掉上个值的收集操作
             result.setResult(it, isRefresh)
         }
     }

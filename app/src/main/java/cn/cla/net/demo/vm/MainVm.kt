@@ -2,24 +2,23 @@ package cn.cla.net.demo.vm
 
 import android.app.Application
 import cn.cla.library.net.vm.BaseViewModel
-import cn.cla.library.net.vm.PageCacheInf
 
 class MainVm(app: Application) : BaseViewModel(app) {
 
     private val repo by lazy { MainRepository() }
 
     private val _homeDataFlow = createLiveFlow<String>()
-    val homeDataState = _homeDataFlow.switchMap {
+    val homeDataState = _homeDataFlow.switchFlow {
         repo.loadHomeBanner()
     }
 
     private val _loadList = createLiveFlow<Int>()
-    val loadList = _loadList.switchMap {
+    val loadList = _loadList.switchFlow {
         repo.loadList(it)
     }
 
     private val _loadSecondFragment1 = createLiveFlow<Int>()
-    val loadSecondFragment1 = _loadSecondFragment1.switchMap {
+    val loadSecondFragment1 = _loadSecondFragment1.switchFlow {
         repo.loadList(it)
     }
 
@@ -38,18 +37,7 @@ class MainVm(app: Application) : BaseViewModel(app) {
     fun loadSecondFragment1(pageIndex: Int, refresh: Boolean, force: Boolean) {
         _loadSecondFragment1.setValue(value = pageIndex, isRefresh = refresh, forceRequest = force)
     }
+
+    fun   loadHomeBanner() =   repo.loadHomeBanner().launch()
 }
 
-data class PageEntityCache(
-    var pageIndex: Int,
-    var pageSize: Int,
-    var list: List<String>
-) : PageCacheInf<PageEntityCache> {
-
-    override fun pageCache(cache: PageEntityCache): PageEntityCache {
-        val newList = mutableListOf<String>()
-        newList.addAll(cache.list)
-        newList.addAll(list)
-        return PageEntityCache(pageIndex = pageIndex, pageSize = pageSize, list = newList)
-    }
-}

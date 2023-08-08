@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import cn.cla.library.net.entity.success
+import cn.cla.library.net.vm.observe
 import cn.cla.net.demo.utils.findView
 import cn.cla.net.demo.vm.MainVm
 
@@ -29,7 +30,8 @@ class ThirdAty : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_third)
 
-        mainVm.loadList.observe(this) {
+
+        mainVm.loadList.observe {
             it.success {
                 println("ThirdAty.onCreate lwl observe dataSize=${adapter.dataSize} list=${list.size}")
                 if (adapter.dataSize == 0) {
@@ -40,7 +42,7 @@ class ThirdAty : AppCompatActivity() {
             }
         }
 
-        mainVm.homeDataState.observe(this, minActiveState = Lifecycle.State.RESUMED) {
+        mainVm.homeDataState.observe(Lifecycle.State.RESUMED) {
             println("ThirdAty.onCreate lwl res=$it")
         }
 

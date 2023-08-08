@@ -1,21 +1,30 @@
 package cn.cla.library.net.vm
 
 import android.util.Log
-import androidx.lifecycle.DefaultLifecycleObserver
+import android.view.View
+import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import androidx.lifecycle.flowWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import cn.cla.library.net.entity.PageCacheInf
 import cn.cla.library.net.entity.Resource
+import cn.cla.library.net.entity.complete
 import cn.cla.library.net.entity.convert
 import cn.cla.library.net.entity.success
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.cancellable
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.launch
-import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicBoolean
 
 interface StateObserveInf<T> {
 
@@ -24,88 +33,122 @@ interface StateObserveInf<T> {
      */
     val value: Resource<T>?
 
-    /**
-     * 注册观察者
-     * @param owner 被观察的对象
-     * @param call 请求结果
-     */
-    fun observe(owner: LifecycleOwner, minActiveState: Lifecycle.State? = null, call: ResourceCall<T>)
+    val successValue: Resource<T>?
+        get() = value.let { if (it?.success == true) it else null }
+
+    fun LifecycleOwner.observe(minActiveState: Lifecycle.State? = null, call: ResourceCall<T>): Job?
 
 }
 
-class StateObserveImpl<T>(scope: CoroutineScope) : StateObserveInf<T>, ObserverResultInf<T> {
+context (View)
+fun <T> StateObserveInf<T>.observe(
+    minActiveState: Lifecycle.State? = null,
+    call: ResourceCall<T>
+): Job? {
+    assert(isAttachedToWindow) { "isAttachedToWindow is false !!!" }
+    return findViewTreeLifecycleOwner()?.observe(minActiveState, call)
+}
+
+context (Fragment)
+fun <T> StateObserveInf<T>.observe(
+    minActiveState: Lifecycle.State? = null,
+    call: ResourceCall<T>
+) = viewLifecycleOwner.observe(minActiveState, call)
+
+
+context (AppCompatActivity)
+fun <T> StateObserveInf<T>.observe(
+    minActiveState: Lifecycle.State? = null,
+    call: ResourceCall<T>
+) = this@AppCompatActivity.observe(minActiveState, call)
+
+
+class StateObserveImpl<T> : StateObserveInf<T>, ObserverResultInf<T> {
 
     companion object {
         private val TAG = StateObserveImpl::class.java.simpleName
     }
 
-    private val scopeRef = WeakReference(scope)
-    private val stateFlow by lazy { MutableSharedFlow<Resource<T>>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST) }
-    private var requestJob: Job? = null
+    private val stateFlow = MutableStateFlow<ResourceEntity<T>?>(null)
 
     @Volatile
     private var resource: Resource<T>? = null
 
-    internal var request: (suspend (owner: LifecycleOwner?, state: Lifecycle.State?) -> Unit)? = null
+    override val value get() = resource
 
-    override val value get() = resource.let { if (it?.success == true) it else null }
+    override suspend fun setResult(res: Resource<T>, isRefresh: Boolean) {
+        if (isRefresh) {
+            resource = null
+        }
 
-    override fun setResult(res: Resource<T>, isRefresh: Boolean) {
-        scopeRef.get()?.launch {
-            if (isRefresh) {
-                resource = null
+        stateFlow.emit(ResourceEntity(res))
+    }
+
+    override fun LifecycleOwner.observe(
+        minActiveState: Lifecycle.State?,
+        call: ResourceCall<T>
+    ): Job = lifecycleScope.launch {
+        observe().onCompletion {
+            Log.i(TAG, "StateObserveImpl.observe onCompletion")
+        }.let {
+            if (minActiveState != null) {
+                it.flowWithLifecycle(lifecycle, minActiveState)
+            } else {
+                it
             }
-
-            stateFlow.emit(res)
+        }.collect {
+            call.invoke(it)
         }
     }
 
-    override fun observe(owner: LifecycleOwner, minActiveState: Lifecycle.State?, call: ResourceCall<T>) {
-        var job: Job? = null
+    private suspend fun observe() = flowOf(1).transform { historyData ->
 
-        owner.lifecycle.addObserver(object : DefaultLifecycleObserver {
-            override fun onDestroy(owner: LifecycleOwner) {
-                job?.cancel()
-                owner.lifecycle.removeObserver(this)
-            }
-        })
+        resource?.let {
+            // 发送历史数据
+            emit(it)
+        }
 
-        job = scopeRef.get()?.launch {
+        stateFlow.filterNotNull().collect {
+            val res = it.resource
+            val isNewData = it.isNewData
 
-            resource?.let {
-                launch { call.invoke(it) }
-            }
-
-            requestJob?.cancel()
-            requestJob = launch(Dispatchers.Default) {
-                request?.invoke(owner, minActiveState)
+            if (!isNewData.get()) {
+                // 这个数据已经被处理过了
+                // 这里是页面重建之后，重新observe时，会先发送之前缓存的数据，但是stateFlow也会在collect时发送它保存的数据
+                // 但是如果是分页的数据，stateFlow里面只会保存最后加载的那一页，[resource]里面保存的是从第一页开始到最后加载的那一页的数据
+                // 所以这里不能直接发送stateFlow的数据，要发[resource]
+                return@collect
             }
 
-            stateFlow.onCompletion {
-                Log.i(TAG, "StateObserveImpl.observe onCompletion  owner=${owner}")
-            }.catch {
-                it.printStackTrace()
-            }.collect {
-
-                it.success {
-                    val pageInf = this as? PageCacheInf<T>
-                    if (pageInf == null) {
-                        resource = it
-                    } else {
-                        val cacheData = resource?.data?.let { data -> pageInf.pageCache(data) } ?: it.data
-                        cacheData?.let { cache ->
-                            resource = it.convert(cache)
-                        }
-                    }
+            res.complete {
+                it.isNewData.compareAndSet(true, false)
+            }.success {
+                val pageInf = this as? PageCacheInf<T>
+                if (pageInf == null) {
+                    resource = res
+                    return@success
                 }
 
-                call.invoke(it)
+                val cacheData = resource?.data?.let { data -> pageInf.pageCache(data) } ?: res.data
+                cacheData?.let { cache ->
+                    resource = res.convert(cache)
+                }
             }
+
+            emit(res)
         }
-    }
+    }.flowOn(Dispatchers.Default).cancellable()
+
+    /**
+     * Resource entity
+     *
+     * @property resource 数据
+     * @property isNewData 这次的数据还没有被处理
+     */
+    private class ResourceEntity<T>(
+        val resource: Resource<T>,
+        var isNewData: AtomicBoolean = AtomicBoolean(true)
+    )
 }
 
-interface PageCacheInf<T> {
-    fun pageCache(cache: T): T
-}
 
