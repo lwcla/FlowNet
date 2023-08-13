@@ -36,12 +36,18 @@
         android:layout_marginTop="10dp"
         android:text="toThird" />
 
+    <cn.cla.net.demo.ClaView
+        android:id="@+id/claView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="cla_view" />
+
     <androidx.constraintlayout.helper.widget.Flow
         android:id="@+id/flow"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:padding="10dp"
-        app:constraint_referenced_ids="tvRefresh,tvRequest,btnToSecond,btnToThird"
+        app:constraint_referenced_ids="tvRefresh,tvRequest,btnToSecond,btnToThird,claView"
         app:flow_horizontalGap="10dp"
         app:flow_verticalGap="10dp"
         app:flow_wrapMode="aligned"

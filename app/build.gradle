@@ -61,7 +61,7 @@ dependencies {
 
 
     // Gson 解析容错：https://github.com/getActivity/GsonFactory
-    implementation "com.github.getActivity:GsonFactory:6.3"
+    implementation "com.github.getActivity:GsonFactory:8.0"
     // Json 解析框架：https://github.com/google/gson
     implementation 'com.google.code.gson:gson:2.9.1'
 
@@ -70,4 +70,7 @@ dependencies {
     debugImplementation 'com.squareup.leakcanary:leakcanary-android:2.10'
 
     implementation "com.blankj:utilcodex:1.30.6"
+
+    // LiveEventBus https://github.com/JeremyLiao/LiveEventBus
+    implementation 'io.github.jeremyliao:live-event-bus-x:1.8.0'
 }

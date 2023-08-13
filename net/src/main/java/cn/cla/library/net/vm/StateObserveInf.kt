@@ -1,6 +1,5 @@
 package cn.cla.library.net.vm
 
-import android.util.Log
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
@@ -14,6 +13,7 @@ import cn.cla.library.net.entity.Resource
 import cn.cla.library.net.entity.complete
 import cn.cla.library.net.entity.convert
 import cn.cla.library.net.entity.success
+import cn.cla.library.net.utils.logI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,22 +40,33 @@ interface StateObserveInf<T> {
 
 }
 
+/**
+ * 注册观察者
+ * 在view中使用
+ */
 context (View)
 fun <T> StateObserveInf<T>.observe(
     minActiveState: Lifecycle.State? = null,
     call: ResourceCall<T>
 ): Job? {
-    assert(isAttachedToWindow) { "isAttachedToWindow is false !!!" }
+    assert(isAttachedToWindow) { "StateObserveInf observe isAttachedToWindow is false !!!" }
     return findViewTreeLifecycleOwner()?.observe(minActiveState, call)
 }
 
+/**
+ * 注册观察者
+ * 在fragment中使用
+ */
 context (Fragment)
 fun <T> StateObserveInf<T>.observe(
     minActiveState: Lifecycle.State? = null,
     call: ResourceCall<T>
 ) = viewLifecycleOwner.observe(minActiveState, call)
 
-
+/**
+ * 注册观察者
+ * 在activity中使用
+ */
 context (AppCompatActivity)
 fun <T> StateObserveInf<T>.observe(
     minActiveState: Lifecycle.State? = null,
@@ -63,7 +74,7 @@ fun <T> StateObserveInf<T>.observe(
 ) = this@AppCompatActivity.observe(minActiveState, call)
 
 
-class StateObserveImpl<T> : StateObserveInf<T>, ObserverResultInf<T> {
+class StateObserveImpl<T> : StateObserveInf<T> {
 
     companion object {
         private val TAG = StateObserveImpl::class.java.simpleName
@@ -76,7 +87,7 @@ class StateObserveImpl<T> : StateObserveInf<T>, ObserverResultInf<T> {
 
     override val value get() = resource
 
-    override suspend fun setResult(res: Resource<T>, isRefresh: Boolean) {
+    internal suspend fun setResult(res: Resource<T>, isRefresh: Boolean) {
         if (isRefresh) {
             resource = null
         }
@@ -89,7 +100,7 @@ class StateObserveImpl<T> : StateObserveInf<T>, ObserverResultInf<T> {
         call: ResourceCall<T>
     ): Job = lifecycleScope.launch {
         observe().onCompletion {
-            Log.i(TAG, "StateObserveImpl.observe onCompletion")
+            logI("$TAG observe onCompletion minActiveState=$minActiveState")
         }.let {
             if (minActiveState != null) {
                 it.flowWithLifecycle(lifecycle, minActiveState)

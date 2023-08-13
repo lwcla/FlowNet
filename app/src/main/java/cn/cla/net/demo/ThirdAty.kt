@@ -19,7 +19,7 @@ class ThirdAty : AppCompatActivity() {
     private val rvData by findView<RecyclerView>(R.id.rvData)
 
     private val adapter by lazy {
-        SecondAdapter(this).also {
+        SecondAdapter(this, mainVm).also {
             it.setOnLoadMoreListener {
                 mainVm.loadList(mainVm.pageIndex++, refresh = false, force = true)
             }

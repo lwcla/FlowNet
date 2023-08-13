@@ -13,6 +13,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.setPadding
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -79,10 +80,12 @@ class SecondFragment : Fragment() {
 
     private val viewModel by activityViewModels<MainVm>()
 
+    private val mainVm by viewModels<MainVm>()
+
     private val loadList get() = if ("title0" == name) viewModel.loadSecondFragment1 else viewModel.loadList
 
     private val adapter by lazy {
-        SecondAdapter(requireContext()).also {
+        SecondAdapter(requireContext(), mainVm).also {
             it.setOnLoadMoreListener { loadData() }
         }
     }
@@ -146,7 +149,7 @@ class SecondFragment : Fragment() {
 
 }
 
-class SecondAdapter(context: Context) : SingleAdapterAbs<String>(context) {
+class SecondAdapter(context: Context, private val mainVm: MainVm) : SingleAdapterAbs<String>(context) {
 
 //    constructor(context: Context, list: List<String>) : this(context) {
 //        println("SecondAdapter. lwl list=${list.size}")
@@ -155,7 +158,9 @@ class SecondAdapter(context: Context) : SingleAdapterAbs<String>(context) {
 //    }
 
     override fun ClaBaseViewHolder<String>.initHolder() {
-
+        itemView.setOnClickListener {
+            mainVm.loadList1().observeForever("second_adapter_item_click")
+        }
     }
 
     override fun ClaBaseViewHolder<String>.bindHolder(t: String, pos: Int, payload: String?) {

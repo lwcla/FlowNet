@@ -93,6 +93,7 @@ internal fun String?.cancelJob(map: ConcurrentHashMap<String, Job?>?) {
     }
 
     map?.get(this)?.cancel()
+    map?.remove(this)
 }
 
 internal fun String?.saveJob(map: ConcurrentHashMap<String, Job?>?, job: Job?) {

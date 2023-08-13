@@ -38,6 +38,8 @@ class MainVm(app: Application) : BaseViewModel(app) {
         _loadSecondFragment1.setValue(value = pageIndex, isRefresh = refresh, forceRequest = force)
     }
 
-    fun   loadHomeBanner() =   repo.loadHomeBanner().launch()
+    fun loadHomeBanner() = repo.loadHomeBanner().launch()
+
+    fun loadList1() = repo.loadList(1).launch()
 }
 
