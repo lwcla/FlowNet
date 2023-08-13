@@ -9,17 +9,30 @@ import androidx.annotation.LayoutRes
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.RecyclerView.Adapter
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
-import com.cla.adapter.library.holder.*
+import com.cla.adapter.library.holder.ClaBaseViewHolder
+import com.cla.adapter.library.holder.DefaultViewHolder
+import com.cla.adapter.library.holder.EmptyHolder
+import com.cla.adapter.library.holder.FooterHolder
+import com.cla.adapter.library.holder.HeaderHolder
+import com.cla.adapter.library.holder.LoadingViewHolder
+import java.util.Arrays
+import java.util.concurrent.Executors
 
-abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHolder<T>>() {
+abstract class ClaBaseAdapter<T>(
+    val context: Context,
+) : RecyclerView.Adapter<ClaBaseViewHolder<T>>() {
 
     companion object {
         internal const val LOADING_VIEW = Int.MIN_VALUE
         internal const val HEADER_VIEW = Int.MIN_VALUE + 1
         internal const val FOOTER_VIEW = Int.MIN_VALUE + 2
         internal const val EMPTY_VIEW = Int.MIN_VALUE + 3
+
+        const val REFRESH_ADAPTER_HEADER = "refresh_adapter_header"
+        const val REFRESH_ADAPTER_FOOTER = "refresh_adapter_footer"
+        const val REFRESH_ADAPTER_PRE_LOAD = "refresh_adapter_pre_load"
+        const val REFRESH_ADAPTER_EMPTY = "refresh_adapter_empty"
 
         private var builder = PreLoadBuilder()
         fun build(block: PreLoadBuilder.() -> Unit) {
@@ -41,14 +54,18 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
     }
 
     private val myHandler = ClaBaseAdapterHandler(this)
+    private val singleThread = Executors.newSingleThreadExecutor()
 
-    internal val restoreState = lazy { restoreState() }
+    /** 在第一次装载adapter时，如果保存了之前的列表，那么[refreshData]之后，会恢复RecyclerView的状态 */
+    internal val restoreState = lazy {
+        stateRestorationPolicy = RecyclerView.Adapter.StateRestorationPolicy.PREVENT_WHEN_EMPTY
+    }
 
     internal var recyclerView: RecyclerView? = null
     val curRv: () -> RecyclerView? = { recyclerView }
 
     /** 是否向 [dataList] 中添加过数据，避免一开始就显示emptyView */
-    private var hasSetListData: Boolean = false
+    internal var hasSetListData: Boolean = false
 
     val inflater by lazy { LayoutInflater.from(context) }
 
@@ -72,10 +89,10 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
     internal val needShowPreView get() = preLoadBuilder.preloadEnable && !preLoadBuilder.preloadClose
     internal val loadHolderPos get() = maxOf(itemCount - 1, 0)
 
-    //*****************************headerView/footView/emptyView**************************************************
-    internal var _showHeaderView: Boolean = true
+    // *****************************headerView/footView/emptyView**************************************************
+    internal var _showHeaderView: Boolean = false
     internal var _headerView: View? = null
-    internal var _showFooterView: Boolean = true
+    internal var _showFooterView: Boolean = false
     internal var _footerView: View? = null
 
     /**
@@ -86,10 +103,17 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
     var showHeaderView: Boolean
         get() = _showHeaderView
         set(value) {
-            val msg = myHandler.obtainMessage()
-            msg.what = ClaBaseAdapterHandler.REFRESH_SHOW_HEADER_VIEW
-            msg.obj = value
-            myHandler.sendMessage(msg)
+            singleThread.execute {
+                if (value == _showHeaderView) {
+                    return@execute
+                }
+
+                myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_SHOW_HEADER_VIEW)
+                val msg = myHandler.obtainMessage()
+                msg.what = ClaBaseAdapterHandler.REFRESH_SHOW_HEADER_VIEW
+                msg.obj = value
+                myHandler.sendMessage(msg)
+            }
         }
 
     /**
@@ -100,10 +124,16 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
     var headerView: View?
         get() = _headerView
         set(value) {
-            val msg = myHandler.obtainMessage()
-            msg.what = ClaBaseAdapterHandler.REFRESH_HEADER_VIEW
-            msg.obj = value
-            myHandler.sendMessage(msg)
+            singleThread.execute {
+                if (value == _headerView) {
+                    return@execute
+                }
+                myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_HEADER_VIEW)
+                val msg = myHandler.obtainMessage()
+                msg.what = ClaBaseAdapterHandler.REFRESH_HEADER_VIEW
+                msg.obj = value
+                myHandler.sendMessage(msg)
+            }
         }
 
     /**
@@ -114,10 +144,16 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
     var showFooterView: Boolean
         get() = _showFooterView
         set(value) {
-            val msg = myHandler.obtainMessage()
-            msg.what = ClaBaseAdapterHandler.REFRESH_SHOW_FOOTER_VIEW
-            msg.obj = value
-            myHandler.sendMessage(msg)
+            singleThread.execute {
+                if (value == _showFooterView) {
+                    return@execute
+                }
+                myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_SHOW_FOOTER_VIEW)
+                val msg = myHandler.obtainMessage()
+                msg.what = ClaBaseAdapterHandler.REFRESH_SHOW_FOOTER_VIEW
+                msg.obj = value
+                myHandler.sendMessage(msg)
+            }
         }
 
     /**
@@ -128,10 +164,16 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
     var footerView: View?
         get() = _footerView
         set(value) {
-            val msg = myHandler.obtainMessage()
-            msg.what = ClaBaseAdapterHandler.REFRESH_FOOTER_VIEW
-            msg.obj = value
-            myHandler.sendMessage(msg)
+            singleThread.execute {
+                if (value == _footerView) {
+                    return@execute
+                }
+                myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_FOOTER_VIEW)
+                val msg = myHandler.obtainMessage()
+                msg.what = ClaBaseAdapterHandler.REFRESH_FOOTER_VIEW
+                msg.obj = value
+                myHandler.sendMessage(msg)
+            }
         }
 
     /**
@@ -150,17 +192,17 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
     internal val isShowHeader get() = headerView != null && showHeaderView
     private val isShowFooter get() = footerView != null && showFooterView
     private val isHasEmpty get() = emptyView != null && showEmptyView && hasSetListData
-    internal val isShowEmpty get() = isHasEmpty && dataSize == 0
+    internal val isShowEmpty get() = isHasEmpty && showDataSize == 0
 
     private val headerPos get() = 0
     private val footerPos get() = maxOf((itemCount - 1).run { if (needShowPreView) (this - 1) else this }, 0)
-    //*****************************headerView/footView/emptyView**************************************************
+    private val emptyPos get() = if (isShowHeader) 1 else 0
+    // *****************************headerView/footView/emptyView**************************************************
 
-    //*************************************自定义事件处理***********************************************************
+    // *************************************自定义事件处理***********************************************************
     internal var itemChildClickListener: ((View, Int, T) -> Unit)? = null
     internal var itemChildLongClickListener: ((View, Int, T) -> Boolean)? = null
-    //*************************************自定义事件处理***********************************************************
-
+    // *************************************自定义事件处理***********************************************************
 
     /** 设置预加载 */
     fun setOnLoadMoreListener(loadMore: () -> Unit) {
@@ -208,14 +250,28 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
     }
 
     fun scrollToPosition(pos: Int) {
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.SCROLL_TO_POSITION
-        msg.arg1 = pos
-        myHandler.sendMessage(msg)
+        singleThread.execute {
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.SCROLL_TO_POSITION
+            msg.arg1 = pos
+            myHandler.sendMessage(msg)
+        }
     }
 
+    /** 判断pos的位置是否为headerHolder */
+    fun isHeaderHolder(pos: Int) = isShowHeader && pos == headerPos
+
+    /** 判断pos的位置是否为footerHolder */
+    fun isFooterHolder(pos: Int) = isShowFooter && pos == footerPos
+
+    /** 判断pos的位置是否为loadHolder */
+    fun isLoadHolder(pos: Int) = needShowPreView && pos == loadHolderPos
+
+    /** 判断pos的位置是否为emptyHolder */
+    fun isEmptyHolder(pos: Int) = isShowEmpty && pos == emptyPos
+
     open fun refreshData(list: List<T>) {
-        refreshData(list, scrollToTop = true)
+        refreshData(list, scrollToTop = false)
     }
 
     open fun refreshData(list: List<T>, scrollToTop: Boolean) {
@@ -238,30 +294,32 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
      * @param scrollToTopOffset 滚动到顶部的偏移量
      */
     open fun refreshData(list: List<T>, scrollToTop: Boolean, scrollToTopIncludeHeader: Boolean, scrollToTopOffset: Int) {
-        if (System.identityHashCode(dataList) != System.identityHashCode(list)) {
-            dataList.clear()
-            dataList.addAll(list)
+        singleThread.execute {
+            if (System.identityHashCode(dataList) != System.identityHashCode(list)) {
+                dataList.clear()
+                dataList.addAll(list)
+            }
+            hasSetListData = true
+
+            // 刷新数据的时候移除其他关于数据的消息
+            // headerView和footerView的消息跟数据是并行的，不能在这里把它们俩的消息也清空掉了
+            myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_DATA)
+            myHandler.removeMessages(ClaBaseAdapterHandler.ADD_DATA)
+            myHandler.removeMessages(ClaBaseAdapterHandler.REMOVE_DATA)
+            myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_ITEM)
+            myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_ITEMS)
+            myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_PRE_FAILED)
+            myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_PRE_NO_MORE)
+            myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_PRE_LOADING)
+            myHandler.removeMessages(ClaBaseAdapterHandler.SCROLL_TO_POSITION)
+            myHandler.removeMessages(ClaBaseAdapterHandler.CLOSE_PRE_LOAD)
+            myHandler.removeMessages(ClaBaseAdapterHandler.REPLACE_ITEMS)
+
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.REFRESH_DATA
+            msg.obj = AdapterRefreshData(list, scrollToTop, scrollToTopIncludeHeader, scrollToTopOffset)
+            myHandler.sendMessage(msg)
         }
-        hasSetListData = true
-        println("ClaBaseAdapter.refreshData lwl ")
-
-        //刷新数据的时候移除其他关于数据的消息
-        //headerView和footerView的消息跟数据是并行的，不能在这里把它们俩的消息也清空掉了
-        myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_DATA)
-        myHandler.removeMessages(ClaBaseAdapterHandler.ADD_DATA)
-        myHandler.removeMessages(ClaBaseAdapterHandler.REMOVE_DATA)
-        myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_ITEM)
-        myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_ITEMS)
-        myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_PRE_FAILED)
-        myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_PRE_NO_MORE)
-        myHandler.removeMessages(ClaBaseAdapterHandler.REFRESH_PRE_LOADING)
-        myHandler.removeMessages(ClaBaseAdapterHandler.SCROLL_TO_POSITION)
-        myHandler.removeMessages(ClaBaseAdapterHandler.CLOSE_PRE_LOAD)
-
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.REFRESH_DATA
-        msg.obj = AdapterRefreshData(list, scrollToTop, scrollToTopIncludeHeader, scrollToTopOffset)
-        myHandler.sendMessage(msg)
     }
 
     /**
@@ -269,69 +327,89 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
      * 这个时候不能直接refreshData(dataList)这样调用，[refreshData]会重置当前的预加载状态，本来已经是最后一页的数据，还要重新加载一次
      */
     open fun refreshAllItems(payload: String? = null) {
-        refreshItems(0, dataSize, payload)
+        singleThread.execute {
+            refreshItems(0, dataSize, payload)
+        }
     }
 
-    /**
-     * 添加数据
-     */
+    /** 添加数据 */
     open fun addData(t: T) {
-        addData(listOf(t), dataSize)
+        singleThread.execute {
+            addData(listOf(t), dataSize)
+        }
     }
 
-    /**
-     * 添加数据
-     */
+    /** 添加数据 */
     open fun addData(list: List<T>) {
-        addData(list, dataSize)
+        singleThread.execute {
+            addData(list, dataSize)
+        }
     }
 
-    /**
-     * 添加数据
-     */
-    open fun addData(list: List<T>, index: Int) {
-        val addToEnd = if (index == dataSize) 1 else 0
-        dataList.addAll(index, list)
-        hasSetListData = true
-        println("ClaBaseAdapter.addData lwl ")
+    /** 添加数据 */
+    open fun addData(t: T, index: Int) {
+        singleThread.execute {
+            addData(listOf(t), index)
+        }
+    }
 
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.ADD_DATA
-        msg.arg1 = index
-        msg.arg2 = addToEnd
-        msg.obj = list
-        myHandler.sendMessage(msg)
+    /** 添加数据 */
+    open fun addData(list: List<T>, index: Int) {
+        singleThread.execute {
+            if (dataList.isEmpty()) {
+                refreshData(list)
+                return@execute
+            }
+
+            val addToEnd = if (index == dataSize) 1 else 0
+            dataList.addAll(index, list)
+            hasSetListData = true
+
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.ADD_DATA
+            msg.arg1 = index
+            msg.arg2 = addToEnd
+            msg.obj = list
+            myHandler.sendMessage(msg)
+        }
     }
 
     open fun removeData(data: T) {
-        val index = dataList.indexOf(data)
-        removeData(index)
+        singleThread.execute {
+            val result = dataList.remove(data)
+            if (!result) {
+                return@execute
+            }
+
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.REMOVE_DATA
+            msg.obj = data
+            myHandler.sendMessage(msg)
+        }
     }
 
     /**
      * 删除数据
      */
     open fun removeData(pos: Int) {
-        if (pos !in dataList.indices) {
-            return
+        singleThread.execute {
+            dataList.getOrNull(pos)?.let { removeData(it) }
         }
-        val removeData = dataList.removeAt(pos)
-
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.REMOVE_DATA
-        msg.obj = removeData
-        myHandler.sendMessage(msg)
     }
 
     open fun refreshItem(pos: Int, payload: String? = null) {
-        dataList.getOrNull(pos)?.let { refreshItem(it, payload) }
+        singleThread.execute {
+            dataList.getOrNull(pos)?.let { refreshItem(it, payload) }
+        }
     }
 
     open fun refreshItem(t: T, payload: String? = null) = try {
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.REFRESH_ITEM
-        msg.obj = AdapterRefreshItem(t, payload)
-        myHandler.sendMessage(msg)
+        singleThread.execute {
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.REFRESH_ITEM
+            msg.obj = AdapterRefreshItem(t, payload)
+            myHandler.sendMessage(msg)
+        }
     } catch (e: Exception) {
         e.printStackTrace()
     }
@@ -344,11 +422,13 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
      * @param successive dataList是否是一个adapter中连续的数据集合
      */
     open fun refreshItems(dataList: List<T>, payload: String? = null, successive: Boolean = true) {
-        if (successive) {
-            //dataList是一个adapter中连续的数据集合，而这个方法最终调用的是 notifyItemRangeChanged(pos, count, payload)方法去刷新
-            dataList.firstOrNull()?.let { refreshItems(it, dataList.size, payload) }
-        } else {
-            dataList.forEach { refreshItem(it, payload) }
+        singleThread.execute {
+            if (successive) {
+                // dataList是一个adapter中连续的数据集合，而这个方法最终调用的是 notifyItemRangeChanged(pos, count, payload)方法去刷新
+                dataList.firstOrNull()?.let { refreshItems(it, dataList.size, payload) }
+            } else {
+                dataList.forEach { refreshItem(it, payload) }
+            }
         }
     }
 
@@ -359,7 +439,9 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
      * @param payload String?
      */
     open fun refreshItems(pos: Int, count: Int, payload: String? = null) {
-        dataList.getOrNull(pos)?.let { refreshItems(it, count, payload) }
+        singleThread.execute {
+            dataList.getOrNull(pos)?.let { refreshItems(it, count, payload) }
+        }
     }
 
     /**
@@ -369,14 +451,16 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
      * @param payload String?
      */
     open fun refreshItems(startData: T, count: Int, payload: String? = null) {
-        if (count == 0) {
+        if (count <= 0) {
             return
         }
 
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.REFRESH_ITEMS
-        msg.obj = AdapterRefreshItems(startData, count, payload)
-        myHandler.sendMessage(msg)
+        singleThread.execute {
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.REFRESH_ITEMS
+            msg.obj = AdapterRefreshItems(startData, count, payload)
+            myHandler.sendMessage(msg)
+        }
     }
 
     /**
@@ -386,7 +470,9 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
      * @param payload String?
      */
     open fun replaceItem(pos: Int, t: T, payload: String? = null) {
-        replaceItems(pos, listOf(t), payload)
+        singleThread.execute {
+            replaceItems(pos, listOf(t), payload)
+        }
     }
 
     /**
@@ -396,121 +482,91 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
      * @param payload String?
      */
     open fun replaceItems(pos: Int, newList: List<T>, payload: String? = null) {
-        if (System.identityHashCode(dataList) != System.identityHashCode(newList)) {
-            val removeList = dataList.filterIndexed { index, t ->
-                index >= pos && index < pos + newList.size
+        singleThread.execute {
+            if (dataList.isEmpty()) {
+                return@execute
             }
-            dataList.removeAll(removeList)
-            dataList.addAll(pos, newList)
-        }
 
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.REPLACE_ITEMS
-        msg.obj = AdapterReplaceItems(pos, newList, payload)
-        myHandler.sendMessage(msg)
-    }
-
-    /**
-     * 设置headerView
-     */
-    internal fun refreshHeaderView(originalPos: Int) {
-        //adapter中是否已经有headerView
-        val headerIsExists = originalPos >= 0
-        if (headerIsExists) {
-            if (isShowHeader) {
-                //headerView本来就已经在adapter中了，这个时候只需要刷新
-                notifyItemChanged(originalPos, "refreshHeader")
-            } else {
-                //现在需要隐藏headerView，这个时候就从adapter中删除headerView
-                notifyItemRemoved(originalPos)
-                //刷新之后的数据，避免数据错乱
-                notifyItemRangeChanged(originalPos, itemCount - originalPos, "")
+            if (System.identityHashCode(dataList) != System.identityHashCode(newList)) {
+                val removeList = dataList.filterIndexed { index, t ->
+                    index >= pos && index < pos + newList.size
+                }
+                dataList.removeAll(removeList)
+                if (dataList.lastIndex < pos) {
+                    dataList.addAll(newList)
+                } else {
+                    dataList.addAll(pos, newList)
+                }
             }
-            return
-        }
 
-        if (isShowHeader) {
-            val pos = headerPos
-            //刷新之后的数据，避免数据错乱
-            notifyItemRangeChanged(pos, itemCount - pos, "")
-        }
-    }
-
-    /**
-     * 设置footerView
-     */
-    internal fun refreshFooterView(originalPos: Int) {
-        //adapter中是否已经有footerView
-        val footerIsExists = originalPos >= 0
-        if (footerIsExists) {
-            if (isShowFooter) {
-                //footerView本来就已经在adapter中了，这个时候只需要刷新
-                notifyItemChanged(originalPos, "refreshFooter")
-            } else {
-                //现在需要隐藏footerView，这个时候就从adapter中删除footerView
-                notifyItemRemoved(originalPos)
-                //刷新之后的数据，避免数据错乱
-                notifyItemRangeChanged(originalPos, itemCount - originalPos, "")
-            }
-            return
-        }
-
-        if (isShowFooter) {
-            val pos = footerPos
-            //刷新之后的数据，避免数据错乱
-            notifyItemRangeChanged(pos, itemCount - pos, "")
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.REPLACE_ITEMS
+            msg.obj = AdapterReplaceItems(pos, newList, payload)
+            myHandler.sendMessage(msg)
         }
     }
 
     /** 关闭预加载，刷新数据之后，会被重新打开 */
     fun closePreLoad() {
-        if (!needShowPreView) {
-            return
+        singleThread.execute {
+            if (!needShowPreView) {
+                return@execute
+            }
+
+            // 表示已经在显示预加载的布局了，拦截[preload]方法的重复调用
+            preLoadBuilder.showPreView()
+
+            myHandler.removePreLoadMsg()
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.CLOSE_PRE_LOAD
+            myHandler.sendMessage(msg)
         }
-
-        //表示已经在显示预加载的布局了，拦截[preload]方法的重复调用
-        preLoadBuilder.showPreView()
-
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.CLOSE_PRE_LOAD
-        myHandler.sendMessage(msg)
     }
 
     fun loadFailed() {
-        if (!needShowPreView) {
-            return
+        singleThread.execute {
+            if (!needShowPreView) {
+                return@execute
+            }
+
+            // 表示已经在显示预加载的布局了，拦截[preload]方法的重复调用
+            preLoadBuilder.showPreView()
+
+            myHandler.removePreLoadMsg()
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.REFRESH_PRE_FAILED
+            myHandler.sendMessage(msg)
         }
-
-        //表示已经在显示预加载的布局了，拦截[preload]方法的重复调用
-        preLoadBuilder.showPreView()
-
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.REFRESH_PRE_FAILED
-        myHandler.sendMessage(msg)
     }
 
     fun noMoreData() {
-        if (!needShowPreView) {
-            return
+        singleThread.execute {
+            if (!needShowPreView) {
+                return@execute
+            }
+
+            preLoadBuilder.showPreView()
+
+            myHandler.removePreLoadMsg()
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.REFRESH_PRE_NO_MORE
+            myHandler.sendMessage(msg)
         }
-
-        preLoadBuilder.showPreView()
-
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.REFRESH_PRE_NO_MORE
-        myHandler.sendMessage(msg)
     }
 
     fun loading() {
-        if (!needShowPreView) {
-            return
+        singleThread.execute {
+            if (!needShowPreView) {
+                return@execute
+            }
+
+            preLoadBuilder.showPreView()
+
+            myHandler.removePreLoadMsg()
+            val msg = myHandler.obtainMessage()
+            msg.what = ClaBaseAdapterHandler.REFRESH_PRE_LOADING
+            myHandler.sendMessage(msg)
         }
-
-        preLoadBuilder.showPreView()
-
-        val msg = myHandler.obtainMessage()
-        msg.what = ClaBaseAdapterHandler.REFRESH_PRE_LOADING
-        myHandler.sendMessage(msg)
     }
 
     /**
@@ -526,27 +582,98 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
         return viewHolder.getViewOrNull(viewId)
     }
 
+    /** 设置headerView */
+    internal fun refreshHeaderView(originalPos: Int) {
+        // adapter中是否已经有headerView
+        val headerIsExists = originalPos >= 0
+        if (headerIsExists) {
+            if (isShowHeader) {
+                // headerView本来就已经在adapter中了，这个时候只需要刷新
+                notifyItemChanged(originalPos, REFRESH_ADAPTER_HEADER)
+            } else {
+                // 现在需要隐藏headerView，这个时候就从adapter中删除headerView
+                notifyItemRemoved(originalPos)
+                // 刷新之后的数据，避免数据错乱
+                notifyVisibleItems(originalPos, showDataSize - originalPos, REFRESH_ADAPTER_HEADER)
+            }
+            return
+        }
+
+        if (isShowHeader) {
+            val pos = headerPos
+            notifyItemInserted(pos)
+            // 刷新之后的数据，避免数据错乱
+            notifyVisibleItems(originalPos, showDataSize - originalPos, REFRESH_ADAPTER_HEADER)
+        }
+    }
+
+    /** 设置footerView */
+    internal fun refreshFooterView(originalPos: Int) {
+        // adapter中是否已经有footerView
+        val footerIsExists = originalPos >= 0
+        if (footerIsExists) {
+            if (isShowFooter) {
+                // footerView本来就已经在adapter中了，这个时候只需要刷新
+                notifyItemChanged(originalPos, REFRESH_ADAPTER_FOOTER)
+            } else {
+                // 现在需要隐藏footerView，这个时候就从adapter中删除footerView
+                notifyItemRemoved(originalPos)
+                // 刷新之后的数据，避免数据错乱
+                notifyItemChanged(originalPos)
+                myHandler.notifyPreLoad()
+            }
+            return
+        }
+
+        if (isShowFooter) {
+            val pos = footerPos
+            notifyItemInserted(pos)
+            // 刷新之后的数据，避免数据错乱
+            // 在这里用notifyVisibleItems崩溃过，所以写成这样来刷新
+            notifyItemChanged(pos)
+            myHandler.notifyPreLoad()
+        }
+    }
+
     /**
      * 根据类型找到viewHolder的位置
      * @param type Int
      * @return Int
      */
     internal fun findPositionByType(type: Int): Int {
-        //itemCount并不是取的现在展示中的数据数量，而是直接调的getItemCount方法拿到的值
-        if (type == FOOTER_VIEW || type == LOADING_VIEW || type == EMPTY_VIEW || type == LOADING_VIEW) {
-            //这两个从后往前找
-            for (i in (itemCount - 1) downTo 0) {
-                val viewType = getItemViewType(i)
-                if (viewType == type) {
-                    return i
-                }
+        if (type == EMPTY_VIEW) {
+            val viewType = getItemViewType(emptyPos)
+            if (viewType == type) {
+                return emptyPos
             }
-        } else {
-            repeat(itemCount) {
-                val viewType = getItemViewType(it)
-                if (viewType == type) {
-                    return it
-                }
+        }
+
+        if (type == LOADING_VIEW) {
+            val viewType = getItemViewType(loadHolderPos)
+            if (viewType == type) {
+                return loadHolderPos
+            }
+        }
+
+        // itemCount并不是取的现在展示中的数据数量，而是直接调的getItemCount方法拿到的值
+        if (type == FOOTER_VIEW) {
+            val viewType = getItemViewType(footerPos)
+            if (viewType == type) {
+                return footerPos
+            }
+        }
+
+        if (type == HEADER_VIEW) {
+            val viewType = getItemViewType(headerPos)
+            if (viewType == type) {
+                return headerPos
+            }
+        }
+
+        repeat(itemCount) {
+            val viewType = getItemViewType(it)
+            if (viewType == type) {
+                return it
             }
         }
         return -1
@@ -554,7 +681,7 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
 
     internal fun scrollToPosWithOffset(pos: Int, offset: Int) {
         recyclerView?.layoutManager?.let { manager ->
-            //滚动到顶部的偏移量
+            // 滚动到顶部的偏移量
             if (offset == 0) {
                 manager.scrollToPosition(pos)
             } else {
@@ -568,9 +695,68 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
         }
     }
 
-    /** 在设置了数据之后，恢复RecyclerView的状态 */
-    private fun restoreState() {
-        stateRestorationPolicy = RecyclerView.Adapter.StateRestorationPolicy.PREVENT_WHEN_EMPTY
+    /**
+     * 尽量只刷新可见范围中的数据
+     *
+     * @param pos 开始的位置
+     * @param count 刷新数量
+     * @param payload payload
+     */
+    internal fun notifyVisibleItems(pos: Int, count: Int, payload: String?) {
+        if (count <= 0 || pos < 0) {
+            return
+        }
+
+        val startPos = maxOf(pos, 0)
+
+        val refreshPos: Int
+        val refreshCount: Int
+
+        when (val manager = curRv.invoke()?.layoutManager) {
+            is GridLayoutManager -> {
+                val beyondCount = manager.spanCount * 2
+                refreshPos = maxOf(manager.findFirstVisibleItemPosition() - beyondCount, startPos)
+                val lastPos = minOf(manager.findLastVisibleItemPosition() + beyondCount, showDataSize - 1)
+                refreshCount = lastPos - refreshPos
+            }
+
+            is StaggeredGridLayoutManager -> {
+                val beyondCount = manager.spanCount * 2
+                val first = IntArray(manager.spanCount)
+                val last = IntArray(manager.spanCount)
+
+                manager.findFirstVisibleItemPositions(first)
+                manager.findLastVisibleItemPositions(last)
+                Arrays.sort(last)
+
+                val firstVisiblePos = first.firstOrNull() ?: -1
+                val lastVisiblePos = last.lastOrNull() ?: showDataSize
+
+                refreshPos = maxOf(firstVisiblePos - beyondCount, startPos)
+                val lastPos = minOf(lastVisiblePos + beyondCount, showDataSize - 1)
+                refreshCount = lastPos - refreshPos
+            }
+
+            is LinearLayoutManager -> {
+                val beyondCount = 4
+                // 获取第一个可见view的位置
+                refreshPos = maxOf(manager.findFirstVisibleItemPosition() - beyondCount, startPos)
+                // 获取最后一个可见view的位置
+                val lastPos = minOf(manager.findLastVisibleItemPosition() + beyondCount, showDataSize - 1)
+                refreshCount = lastPos - refreshPos
+            }
+
+            else -> {
+                refreshPos = maxOf(startPos, 0)
+                refreshCount = minOf(count, showDataSize - refreshPos)
+            }
+        }
+
+        if (refreshCount <= 0 || showDataSize <= 0) {
+            return
+        }
+
+        notifyItemRangeChanged(refreshPos, refreshCount, payload)
     }
 
     /**
@@ -582,7 +768,7 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
             return
         }
 
-        //显示emptyView的时候也不要预加载
+        // 显示emptyView的时候也不要预加载
         if (showDataSize == 0) {
             return
         }
@@ -600,7 +786,6 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ClaBaseViewHolder<T> {
-
         if (viewType == HEADER_VIEW) {
             return HeaderHolder(context)
         }
@@ -687,7 +872,7 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
 
         if (holder is LoadingViewHolder) {
             holder.bind()
-            //点击重试时，需要再去加载数据
+            // 点击重试时，需要再去加载数据
             preload(dataPos(position))
             return
         }
@@ -704,7 +889,7 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
     override fun onBindViewHolder(
         holder: ClaBaseViewHolder<T>,
         position: Int,
-        payloads: MutableList<Any>
+        payloads: MutableList<Any>,
     ) {
         if (payloads.isNullOrEmpty()) {
             onBindViewHolder(holder, position)
@@ -730,7 +915,7 @@ abstract class ClaBaseAdapter<T>(val context: Context) : Adapter<ClaBaseViewHold
         holder.viewAttachedToWindow()
     }
 
-    //https://www.jianshu.com/p/4f66c2c71d8c
+    // https://www.jianshu.com/p/4f66c2c71d8c
     override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
         super.onAttachedToRecyclerView(recyclerView)
         this.recyclerView = recyclerView
@@ -820,21 +1005,21 @@ internal inline fun <T> createHolder(
     }
 }
 
-//************************************************item只有一种类型*******************************************************************
+// ************************************************item只有一种类型*******************************************************************
 /**
  * 整个adapter中只有一个类型的item时，继承这个类
  * @property layoutRes itemView的xml，如果不传的话，那就必须重写[createItemView]方法
  */
 abstract class SingleAdapterAbs<T>(
     context: Context,
-    @LayoutRes private val layoutRes: Int? = null
+    @LayoutRes private val layoutRes: Int? = null,
 ) : ClaBaseAdapter<T>(context) {
 
     override fun addDelegate() = null
 
     override fun convertHolder(
         adapter: ClaBaseAdapter<T>,
-        parent: ViewGroup
+        parent: ViewGroup,
     ) = if (layoutRes != null) {
         createHolder<T>(
             baseAdapter = adapter,
@@ -843,7 +1028,7 @@ abstract class SingleAdapterAbs<T>(
             inflater = inflater,
             initHolder = { initHolder() },
             onViewDetachedFromWindow = { it.detachedFromWindow() },
-            onViewAttachedToWindow = { it.attachedToWindow() }
+            onViewAttachedToWindow = { it.attachedToWindow() },
         ) { bean, pos, payload ->
             bindHolder(bean, pos, payload)
         }
@@ -853,7 +1038,7 @@ abstract class SingleAdapterAbs<T>(
             view = createItemView()!!,
             initHolder = { initHolder() },
             onViewDetachedFromWindow = { it.detachedFromWindow() },
-            onViewAttachedToWindow = { it.attachedToWindow() }
+            onViewAttachedToWindow = { it.attachedToWindow() },
         ) { bean, pos, payload ->
             bindHolder(bean, pos, payload)
         }
@@ -866,10 +1051,9 @@ abstract class SingleAdapterAbs<T>(
     abstract fun ClaBaseViewHolder<T>.initHolder()
     abstract fun ClaBaseViewHolder<T>.bindHolder(t: T, pos: Int, payload: String?)
 }
-//************************************************item只有一种类型*******************************************************************
+// ************************************************item只有一种类型*******************************************************************
 
-
-//*************************************************item有多种类型********************************************************************
+// *************************************************item有多种类型********************************************************************
 abstract class MultiAdapterAbs<T>(context: Context) : ClaBaseAdapter<T>(context) {
     override fun convertHolder(adapter: ClaBaseAdapter<T>, parent: ViewGroup) = DefaultViewHolder<T>(context)
 }
@@ -879,12 +1063,12 @@ abstract class MultiAdapterAbs<T>(context: Context) : ClaBaseAdapter<T>(context)
  * @property layoutRes itemView的xml，如果不传的话，那就必须重写[createItemView]方法
  */
 abstract class MultiAdapterDelegateAbs<T>(
-    @LayoutRes private val layoutRes: Int? = null
+    @LayoutRes private val layoutRes: Int? = null,
 ) : ClaBaseAdapter.ItemViewDelegate<T>() {
 
     override fun convertHolder(
         adapter: ClaBaseAdapter<T>,
-        parent: ViewGroup
+        parent: ViewGroup,
     ) = if (layoutRes != null) {
         createHolder<T>(
             baseAdapter = adapter,
@@ -893,7 +1077,7 @@ abstract class MultiAdapterDelegateAbs<T>(
             inflater = inflater,
             initHolder = { initHolder() },
             onViewDetachedFromWindow = { it.detachedFromWindow() },
-            onViewAttachedToWindow = { it.attachedToWindow() }
+            onViewAttachedToWindow = { it.attachedToWindow() },
         ) { bean, pos, payload ->
             bindHolder(bean, pos, payload)
             View(parent.context)
@@ -904,7 +1088,7 @@ abstract class MultiAdapterDelegateAbs<T>(
             view = createItemView()!!,
             initHolder = { initHolder() },
             onViewDetachedFromWindow = { it.detachedFromWindow() },
-            onViewAttachedToWindow = { it.attachedToWindow() }
+            onViewAttachedToWindow = { it.attachedToWindow() },
         ) { bean, pos, payload ->
             bindHolder(bean, pos, payload)
         }
@@ -916,7 +1100,5 @@ abstract class MultiAdapterDelegateAbs<T>(
 
     abstract fun ClaBaseViewHolder<T>.initHolder()
     abstract fun ClaBaseViewHolder<T>.bindHolder(t: T, pos: Int, payload: String?)
-
 }
-//*************************************************item有多种类型********************************************************************
-
+// *************************************************item有多种类型********************************************************************

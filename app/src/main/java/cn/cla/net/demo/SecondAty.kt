@@ -12,7 +12,6 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.setPadding
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -78,14 +77,12 @@ class SecondFragment : Fragment() {
 
     private val name by lazyNone { arguments?.getString(KEY_NAME) }
 
-    private val viewModel by activityViewModels<MainVm>()
-
-    private val mainVm by viewModels<MainVm>()
+    private val viewModel by viewModels<MainVm>()
 
     private val loadList get() = if ("title0" == name) viewModel.loadSecondFragment1 else viewModel.loadList
 
     private val adapter by lazy {
-        SecondAdapter(requireContext(), mainVm).also {
+        SecondAdapter(requireContext(), viewModel).also {
             it.setOnLoadMoreListener { loadData() }
         }
     }
@@ -95,6 +92,8 @@ class SecondFragment : Fragment() {
     }
 
     private val owner get() = viewLifecycleOwner
+
+    private var index = 0
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         println("FragmentForSecond.onCreateView lwl name=${name} viewModel=${viewModel}")
@@ -120,9 +119,9 @@ class SecondFragment : Fragment() {
         }
 
         if ("title0" == name) {
-            viewModel.loadSecondFragment1(viewModel.fragmentPageIndex, refresh = false, force = false)
+            viewModel.loadSecondFragment1(index, refresh = false, force = false)
         } else {
-            viewModel.loadList(viewModel.pageIndex, refresh = false, force = false)
+            viewModel.loadList(index, refresh = false, force = false)
         }
 
         rvData.layoutManager = LinearLayoutManager(requireContext())
@@ -140,9 +139,9 @@ class SecondFragment : Fragment() {
         println("SecondFragment.loadData lwl name=${name} pageIndex=${viewModel.pageIndex}")
 
         if ("title0" == name) {
-            viewModel.loadSecondFragment1(viewModel.fragmentPageIndex++, refresh = false, force = true)
+            viewModel.loadSecondFragment1(index++, refresh = false, force = true)
         } else {
-            viewModel.loadList(viewModel.pageIndex++, refresh = false, force = true)
+            viewModel.loadList(index++, refresh = false, force = true)
         }
 
     }
