@@ -2,6 +2,7 @@ package cn.cla.library.net.vm
 
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.doOnDetach
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -52,7 +53,9 @@ fun <T> LaunchObserverInf<T>.observe(
     call: ResourceCall<T>
 ): Job? {
     assert(isAttachedToWindow) { "LaunchObserverInf observe isAttachedToWindow is false !!!" }
-    return findViewTreeLifecycleOwner()?.observe(minActiveState, call)
+    val job = findViewTreeLifecycleOwner()?.observe(minActiveState, call)
+    doOnDetach { job?.cancel() }
+    return job
 }
 
 /**
